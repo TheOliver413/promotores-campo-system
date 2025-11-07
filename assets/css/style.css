@@ -1,0 +1,268 @@
+:root {
+    --primary-color: #1e40af;
+    --secondary-color: #059669;
+    --light-bg: #f8f9fa;
+    --dark-text: #212529;
+}
+
+body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    background-color: var(--light-bg);
+}
+
+/* Override Bootstrap primary color */
+.bg-primary {
+    background-color: var(--primary-color) !important;
+}
+
+.btn-primary {
+    background-color: var(--primary-color);
+    border-color: var(--primary-color);
+}
+
+.btn-primary:hover {
+    background-color: #1e3a8a;
+    border-color: #1e3a8a;
+}
+
+.bg-success {
+    background-color: var(--secondary-color) !important;
+}
+
+.btn-success {
+    background-color: var(--secondary-color);
+    border-color: var(--secondary-color);
+}
+
+.btn-success:hover {
+    background-color: #047857;
+    border-color: #047857;
+}
+
+.text-primary {
+    color: var(--primary-color) !important;
+}
+
+.text-success {
+    color: var(--secondary-color) !important;
+}
+
+/* Cards */
+.card {
+    border: none;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+    margin-bottom: 1.5rem;
+}
+
+.card-header {
+    background-color: white;
+    border-bottom: 2px solid var(--primary-color);
+    font-weight: 600;
+}
+
+/* Stats Cards */
+.stat-card {
+    transition: transform 0.2s;
+}
+
+.stat-card:hover {
+    transform: translateY(-5px);
+}
+
+.stat-icon {
+    font-size: 2.5rem;
+    opacity: 0.8;
+}
+
+/* Map Container */
+#map {
+    height: 400px;
+    width: 100%;
+    border-radius: 8px;
+    margin-bottom: 1rem;
+}
+
+/* Mobile Optimizations */
+@media (max-width: 768px) {
+    .navbar-brand {
+        font-size: 1rem;
+    }
+
+    .stat-card {
+        margin-bottom: 1rem;
+    }
+
+    #map {
+        height: 300px;
+    }
+
+    .table-responsive {
+        font-size: 0.875rem;
+    }
+}
+
+/* Login Page */
+.login-container {
+    min-height: 100vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: linear-gradient(135deg, var(--primary-color) 0%, #3b82f6 100%);
+}
+
+.login-card {
+    max-width: 400px;
+    width: 100%;
+}
+
+/* Badge Styles */
+.badge-pendiente {
+    background-color: #fbbf24;
+    color: #000;
+}
+
+.badge-aprobado {
+    background-color: var(--secondary-color);
+}
+
+.badge-rechazado {
+    background-color: #dc2626;
+}
+
+/* Loading Spinner */
+.spinner-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(0, 0, 0, 0.5);
+    display: none;
+    align-items: center;
+    justify-content: center;
+    z-index: 9999;
+}
+
+.spinner-overlay.active {
+    display: flex;
+}
+
+/* Notification Badge */
+.notification-item {
+    border-left: 3px solid var(--primary-color);
+    transition: background-color 0.2s;
+}
+
+.notification-item:hover {
+    background-color: #f3f4f6;
+}
+
+.notification-item.unread {
+    background-color: #eff6ff;
+    font-weight: 600;
+}
+
+/* Button Group */
+.btn-group-sm .btn {
+    padding: 0.25rem 0.5rem;
+    font-size: 0.875rem;
+}
+
+/* Table Actions */
+.table-actions {
+    white-space: nowrap;
+}
+
+/* Form Validation */
+.is-invalid {
+    border-color: #dc2626;
+}
+
+.invalid-feedback {
+    color: #dc2626;
+}
+
+/* Success Message */
+.alert-success {
+    background-color: #d1fae5;
+    border-color: var(--secondary-color);
+    color: #065f46;
+}
+
+/* Error Message */
+.alert-danger {
+    background-color: #fee2e2;
+    border-color: #dc2626;
+    color: #991b1b;
+}
+
+/* Leaflet Map Customization */
+.leaflet-popup-content-wrapper {
+    border-radius: 8px;
+}
+
+.leaflet-popup-content {
+    margin: 10px;
+}
+
+/* Check-in/Check-out Buttons */
+.btn-checkin {
+    background-color: var(--secondary-color);
+    border-color: var(--secondary-color);
+    color: white;
+    font-size: 1.1rem;
+    padding: 0.75rem 1.5rem;
+}
+
+.btn-checkin:hover {
+    background-color: #047857;
+    border-color: #047857;
+    color: white;
+}
+
+.btn-checkout {
+    background-color: #dc2626;
+    border-color: #dc2626;
+    color: white;
+    font-size: 1.1rem;
+    padding: 0.75rem 1.5rem;
+}
+
+.btn-checkout:hover {
+    background-color: #b91c1c;
+    border-color: #b91c1c;
+    color: white;
+}
+
+/* Activity Timeline */
+.timeline {
+    position: relative;
+    padding-left: 30px;
+}
+
+.timeline::before {
+    content: "";
+    position: absolute;
+    left: 10px;
+    top: 0;
+    bottom: 0;
+    width: 2px;
+    background-color: var(--primary-color);
+}
+
+.timeline-item {
+    position: relative;
+    margin-bottom: 1.5rem;
+}
+
+.timeline-item::before {
+    content: "";
+    position: absolute;
+    left: -24px;
+    top: 5px;
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+    background-color: var(--primary-color);
+    border: 2px solid white;
+}
