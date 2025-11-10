@@ -1,6 +1,5 @@
 </main>
 
-<!-- Footer profesional y empresarial completamente rediseñado -->
 <footer>
     <div class="container">
         <div class="footer-content">
@@ -52,15 +51,103 @@
     </div>
 </footer>
 
-<!-- Bootstrap JS -->
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
-
-<!-- Leaflet JS -->
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 
-<!-- Custom JS -->
-<script src="/promotores-campo-system/assets/js/app.js"></script>
-<script src="/promotores-campo-system/assets/js/geolocation.js"></script>
+<!-- Agregar funciones de utilidad -->
+<script>
+    // Funciones globales para usar en todo el sistema
+    function showLoading() {
+        const overlay = document.getElementById('loadingOverlay');
+        if (overlay) {
+            overlay.style.display = 'flex';
+        }
+    }
+
+    function hideLoading() {
+        const overlay = document.getElementById('loadingOverlay');
+        if (overlay) {
+            overlay.style.display = 'none';
+        }
+    }
+
+    function showToast(message, type = 'info') {
+        const toastContainer = document.getElementById('toastContainer') || createToastContainer();
+
+        const toastId = 'toast_' + Date.now();
+        const bgColor = type === 'success' ? 'bg-success' : (type === 'error' ? 'bg-danger' : 'bg-info');
+
+        const toastHTML = `
+        <div id="${toastId}" class="toast align-items-center text-white ${bgColor} border-0" role="alert">
+            <div class="d-flex">
+                <div class="toast-body">
+                    ${message}
+                </div>
+                <button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast"></button>
+            </div>
+        </div>
+    `;
+
+        toastContainer.insertAdjacentHTML('beforeend', toastHTML);
+
+        const toastElement = document.getElementById(toastId);
+        const toast = new bootstrap.Toast(toastElement, {
+            delay: 3000
+        });
+        toast.show();
+
+        toastElement.addEventListener('hidden.bs.toast', () => {
+            toastElement.remove();
+        });
+    }
+
+    function createToastContainer() {
+        const container = document.createElement('div');
+        container.id = 'toastContainer';
+        container.className = 'position-fixed bottom-0 end-0 p-3';
+        container.style.zIndex = '11';
+        document.body.appendChild(container);
+        return container;
+    }
+
+    function getCurrentPosition() {
+        return new Promise((resolve, reject) => {
+            if (!navigator.geolocation) {
+                reject(new Error('Geolocalización no soportada por tu navegador'));
+                return;
+            }
+
+            navigator.geolocation.getCurrentPosition(
+                (position) => {
+                    resolve({
+                        lat: position.coords.latitude,
+                        lon: position.coords.longitude
+                    });
+                },
+                (error) => {
+                    let message = 'Error al obtener ubicación';
+                    switch (error.code) {
+                        case error.PERMISSION_DENIED:
+                            message = 'Debes permitir el acceso a tu ubicación';
+                            break;
+                        case error.POSITION_UNAVAILABLE:
+                            message = 'Información de ubicación no disponible';
+                            break;
+                        case error.TIMEOUT:
+                            message = 'Tiempo de espera agotado al obtener ubicación';
+                            break;
+                    }
+                    reject(new Error(message));
+                }, {
+                    enableHighAccuracy: true,
+                    timeout: 10000,
+                    maximumAge: 0
+                }
+            );
+        });
+    }
+</script>
+
 </body>
 
 </html>

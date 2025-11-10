@@ -31,7 +31,15 @@ class RutaPromotor
     public function getByPromotor($promotorId)
     {
         $stmt = $this->db->prepare("
-            SELECT r.*, p.nombre_proyecto 
+            SELECT 
+                r.id as ruta_promotor_id,
+                r.nombre_ruta,
+                r.fecha_planificada as fecha_asignacion,
+                r.puntos_ruta,
+                r.estado,
+                r.fecha_registro,
+                p.nombre_proyecto,
+                p.id as proyecto_id
             FROM rutas_promotores r 
             JOIN proyectos p ON r.proyecto_id = p.id 
             WHERE r.promotor_user_id = ? 

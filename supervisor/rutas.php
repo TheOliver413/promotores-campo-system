@@ -351,8 +351,11 @@ include '../includes/header.php';
         lng: -74.297333,
         zoom: 6
     };
+    let mapPuntoManual = null;
+    let tempMarkerPuntoManual = null;
     let currentPage = 1;
     let totalPages = 1;
+    let editingPointIndex = null;
 
     document.addEventListener('DOMContentLoaded', () => {
         // Mapa principal
@@ -677,220 +680,6 @@ include '../includes/header.php';
         }
     }
 
-    function agregarPuntoManual() {
-        document.getElementById('punto_nombre').value = '';
-        document.getElementById('punto_direccion').value = '';
-        document.getElementById('punto_latitud').value = '';
-        document.getElementById('punto_longitud').value = '';
-        document.getElementById('punto_tiempo').value = '30';
-        document.getElementById('punto_notas').value = '';
-        if (document.getElementById('guardar_como_ubicacion')) {
-            document.getElementById('guardar_como_ubicacion').checked = false;
-        }
-
-        const modalElement = document.getElementById('modalPuntoManual');
-        const modal = new bootstrap.Modal(modalElement);
-
-        if (window.mapInitListener) {
-            modalElement.removeEventListener('shown.bs.modal', window.mapInitListener);
-        }
-
-        window.mapInitListener = function() {
-            console.log('[v0] Modal mostrado, esperando para inicializar mapa');
-
-            setTimeout(() => {
-                const mapContainer = document.getElementById('mapPuntoManual');
-
-                if (!mapContainer) {
-                    console.error('[v0] Error: Contenedor mapPuntoManual no encontrado en el DOM');
-                    alert('Error: No se pudo inicializar el mapa. Por favor cierre y abra el modal nuevamente.');
-                    return;
-                }
-
-                const rect = mapContainer.getBoundingClientRect();
-                console.log('[v0] Dimensiones del contenedor:', rect);
-
-                if (rect.width === 0 || rect.height === 0) {
-                    console.error('[v0] Error: Contenedor del mapa no tiene dimensiones válidas');
-                    alert('Error: El contenedor del mapa no está visible. Por favor intente nuevamente.');
-                    return;
-                }
-
-                if (window.mapPuntoManual) {
-                    console.log('[v0] Destruyendo mapa anterior');
-                    try {
-                        window.mapPuntoManual.off();
-                        window.mapPuntoManual.remove();
-                        window.mapPuntoManual = null;
-                    } catch (e) {
-                        console.error('[v0] Error al destruir mapa anterior:', e);
-                    }
-                }
-
-                window.tempMarkerPuntoManual = null;
-
-                try {
-                    console.log('[v0] Creando nuevo mapa en mapPuntoManual');
-
-                    window.mapPuntoManual = L.map('mapPuntoManual', {
-                        center: [mapaConfig.lat, mapaConfig.lng],
-                        zoom: mapaConfig.zoom,
-                        scrollWheelZoom: true
-                    });
-
-                    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-                        attribution: '© OpenStreetMap contributors',
-                        maxZoom: 19
-                    }).addTo(window.mapPuntoManual);
-
-                    window.mapPuntoManual.on('click', function(e) {
-                        console.log('[v0] Clic en mapa:', e.latlng);
-
-                        document.getElementById('punto_latitud').value = e.latlng.lat.toFixed(6);
-                        document.getElementById('punto_longitud').value = e.latlng.lng.toFixed(6);
-
-                        // Agregar/mover marcador temporal
-                        if (window.tempMarkerPuntoManual) {
-                            window.mapPuntoManual.removeLayer(window.tempMarkerPuntoManual);
-                        }
-
-                        window.tempMarkerPuntoManual = L.marker(e.latlng, {
-                            icon: L.divIcon({
-                                className: 'custom-marker',
-                                html: '<div style="background: #059669; color: white; border-radius: 50%; width: 30px; height: 30px; display: flex; align-items: center; justify-content: center; font-weight: bold;"><i class="bi bi-geo-alt-fill"></i></div>',
-                                iconSize: [30, 30]
-                            })
-                        }).addTo(window.mapPuntoManual);
-                    });
-
-                    console.log('[v0] Mapa creado exitosamente');
-
-                    setTimeout(() => {
-                        if (window.mapPuntoManual) {
-                            window.mapPuntoManual.invalidateSize();
-                        }
-                    }, 100);
-
-                } catch (error) {
-                    console.error('[v0] Error al crear mapa:', error);
-                    alert('Error al inicializar el mapa: ' + error.message);
-                }
-            }, 300); // Aumentado a 300ms para dar más tiempo
-        };
-
-        modalElement.addEventListener('shown.bs.modal', window.mapInitListener);
-        modal.show();
-    }
-
-    async function geocodificarDireccion() {
-        const direccion = document.getElementById('punto_direccion').value;
-        if (!direccion) {
-            alert('Por favor ingrese una dirección');
-            return;
-        }
-
-        if (!window.mapPuntoManual || typeof window.mapPuntoManual.setView !== 'function') {
-            alert('El mapa aún no está inicializado. Por favor espere un momento e intente nuevamente.');
-            return;
-        }
-
-        try {
-            const proyectoId = document.getElementById('proyecto_id').value;
-            let pais = 'Colombia';
-
-            if (proyectoId) {
-                const configResponse = await fetch(`/promotores-campo-system/api/ruta_crud.php?action=config_mapa&proyecto_id=${proyectoId}`);
-                const configResult = await configResponse.json();
-                if (configResult.success && configResult.data) {
-                    pais = configResult.data.pais || 'Colombia';
-                }
-            }
-
-            const response = await fetch(`/promotores-campo-system/api/ruta_crud.php?action=geocode&direccion=${encodeURIComponent(direccion)}&pais=${pais}`);
-            const result = await response.json();
-
-            console.log('[v0] Resultado de geocodificación:', result);
-
-            if (result.success && result.data && result.data.latitud && result.data.longitud) {
-                document.getElementById('punto_latitud').value = result.data.latitud;
-                document.getElementById('punto_longitud').value = result.data.longitud;
-
-                if (window.mapPuntoManual && typeof window.mapPuntoManual.removeLayer === 'function') {
-                    if (window.tempMarkerPuntoManual) {
-                        window.mapPuntoManual.removeLayer(window.tempMarkerPuntoManual);
-                    }
-
-                    const lat = parseFloat(result.data.latitud);
-                    const lng = parseFloat(result.data.longitud);
-
-                    window.tempMarkerPuntoManual = L.marker([lat, lng], {
-                        icon: L.divIcon({
-                            className: 'custom-marker',
-                            html: '<div style="background: #059669; color: white; border-radius: 50%; width: 30px; height: 30px; display: flex; align-items: center; justify-content: center; font-weight: bold;"><i class="bi bi-geo-alt-fill"></i></div>',
-                            iconSize: [30, 30]
-                        })
-                    }).addTo(window.mapPuntoManual);
-
-                    window.mapPuntoManual.setView([lat, lng], 15);
-                }
-
-                alert('Coordenadas encontradas correctamente');
-            } else {
-                alert('No se pudo geocodificar la dirección: ' + (result.message || 'Error desconocido'));
-            }
-        } catch (error) {
-            console.error('[v0] Error al geocodificar:', error);
-            alert('Error al buscar coordenadas');
-        }
-    }
-
-    function agregarDesdeUbicacion() {
-        if (ubicacionesDisponibles.length === 0) {
-            alert('No hay ubicaciones disponibles. Por favor seleccione un proyecto primero.');
-            return;
-        }
-
-        const tbody = document.getElementById('ubicacionesBody');
-        tbody.innerHTML = '';
-
-        ubicacionesDisponibles.forEach(ubic => {
-            const tr = document.createElement('tr');
-            tr.innerHTML = `
-                <td>${ubic.nombre_empresa || 'N/A'}</td>
-                <td>${ubic.nombre_ubicacion}</td>
-                <td>${ubic.direccion}</td>
-                <td>
-                    <button class="btn btn-sm btn-primary" onclick="seleccionarUbicacion(${ubic.id})">
-                        Seleccionar
-                    </button>
-                </td>
-            `;
-            tbody.appendChild(tr);
-        });
-
-        new bootstrap.Modal(document.getElementById('modalUbicaciones')).show();
-    }
-
-    function seleccionarUbicacion(ubicacionId) {
-        const ubic = ubicacionesDisponibles.find(u => u.id == ubicacionId);
-        if (!ubic) return;
-
-        puntosRuta.push({
-            nombre: ubic.nombre_ubicacion,
-            direccion: ubic.direccion,
-            latitud: parseFloat(ubic.latitud),
-            longitud: parseFloat(ubic.longitud),
-            tiempo_estimado_minutos: 30, // Valor por defecto, se puede hacer editable
-            notas: `Cliente: ${ubic.nombre_empresa}`,
-            ubicacion_cliente_id: ubic.id
-        });
-
-        actualizarListaPuntos();
-        actualizarMapaPreview();
-
-        bootstrap.Modal.getInstance(document.getElementById('modalUbicaciones')).hide();
-    }
-
     function actualizarListaPuntos() {
         const lista = document.getElementById('listaPuntos');
         lista.innerHTML = '';
@@ -914,6 +703,10 @@ include '../includes/header.php';
                         <small>Tiempo: ${punto.tiempo_estimado_minutos} min</small>
                     </div>
                     <div>
+                        <!-- Add edit button for each point -->
+                        <button class="btn btn-sm btn-warning me-1" onclick="editarPunto(${index})" title="Editar punto">
+                            <i class="bi bi-pencil"></i>
+                        </button>
                         <button class="btn btn-sm btn-danger" onclick="eliminarPunto(${index})">
                             <i class="bi bi-trash"></i>
                         </button>
@@ -950,51 +743,56 @@ include '../includes/header.php';
 
         if (puntosRuta.length > 1) {
             try {
-                const response = await fetch('/promotores-campo-system/api/ruta_crud.php', {
+                const routeResponse = await fetch('/promotores-campo-system/api/ruta_crud.php?action=calcular_ruta', {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',
                     },
                     body: JSON.stringify({
-                        action: 'calcular_ruta',
                         puntos: puntosRuta
                     })
                 });
 
-                if (!response.ok) {
-                    throw new Error(`HTTP error! status: ${response.status}`);
-                }
+                if (routeResponse.ok) {
+                    const routeResult = await routeResponse.json();
 
-                const result = await response.json();
-                console.log('[v0] Respuesta del backend (calcular_ruta):', result);
+                    if (routeResult.success && routeResult.data && routeResult.data.geometry) {
+                        // Convertir coordenadas de [lng, lat] a [lat, lng] para Leaflet
+                        const routeCoordinates = routeResult.data.geometry.coordinates.map(coord => [coord[1], coord[0]]);
 
-                if (result.success && result.data && result.data.geometry) {
-                    // Convert coordinates from [lng, lat] to [lat, lng] for Leaflet
-                    const routeCoordinates = result.data.geometry.coordinates.map(coord => [coord[1], coord[0]]);
+                        L.polyline(routeCoordinates, {
+                            color: '#1e40af',
+                            weight: 4,
+                            opacity: 0.8
+                        }).addTo(mapPreview);
 
-                    L.polyline(routeCoordinates, {
-                        color: '#1e40af',
-                        weight: 4,
-                        opacity: 0.8
-                    }).addTo(mapPreview);
-
-                    if (result.data.distancia_km && result.data.tiempo_minutos) {
-                        console.log(`[v0] Ruta calculada: ${result.data.distancia_km} km, ${result.data.tiempo_minutos} min`);
+                        console.log(`[v0] Ruta calculada: ${routeResult.data.distancia_km} km, ${routeResult.data.tiempo_minutos} min`);
+                    } else {
+                        // Fallback: usar líneas rectas
+                        L.polyline(latlngs, {
+                            color: '#1e40af',
+                            weight: 4,
+                            dashArray: '10, 5'
+                        }).addTo(mapPreview);
+                        console.warn('[v0] Usando líneas rectas como fallback');
                     }
                 } else {
-                    throw new Error(result.message || 'No se recibieron datos de ruta válidos');
+                    // Fallback: usar líneas rectas si la respuesta no fue ok
+                    L.polyline(latlngs, {
+                        color: '#1e40af',
+                        weight: 4,
+                        dashArray: '10, 5'
+                    }).addTo(mapPreview);
+                    console.warn('[v0] Fallback: Usando líneas rectas (respuesta HTTP no OK)');
                 }
             } catch (error) {
                 console.error('[v0] Error al calcular ruta:', error);
-                // Fallback to straight lines
+                // Fallback: usar líneas rectas
                 L.polyline(latlngs, {
                     color: '#1e40af',
                     weight: 4,
-                    opacity: 0.6,
                     dashArray: '10, 5'
                 }).addTo(mapPreview);
-
-                console.warn('[v0] Usando líneas rectas como fallback');
             }
         }
 
@@ -1181,13 +979,327 @@ include '../includes/header.php';
         }
     }
 
-    function guardarPuntoManual() {
+    function agregarPuntoManual() {
+        editingPointIndex = null;
+
+        document.getElementById('punto_nombre').value = '';
+        document.getElementById('punto_direccion').value = '';
+        document.getElementById('punto_latitud').value = '';
+        document.getElementById('punto_longitud').value = '';
+        document.getElementById('punto_tiempo').value = '30';
+        document.getElementById('punto_notas').value = '';
+        if (document.getElementById('guardar_como_ubicacion')) {
+            document.getElementById('guardar_como_ubicacion').checked = false;
+        }
+
+        document.querySelector('#modalPuntoManual .modal-title').textContent = 'Agregar Punto Manual';
+
+        const modalElement = document.getElementById('modalPuntoManual');
+        const modal = new bootstrap.Modal(modalElement);
+
+        if (window.mapInitListener) {
+            modalElement.removeEventListener('shown.bs.modal', window.mapInitListener);
+        }
+
+        window.mapInitListener = function() {
+            setTimeout(() => {
+                const mapContainer = document.getElementById('mapPuntoManual');
+
+                if (!mapContainer) {
+                    console.error('[v0] Error: Contenedor mapPuntoManual no encontrado en el DOM');
+                    alert('Error: No se pudo inicializar el mapa. Por favor cierre y abra el modal nuevamente.');
+                    return;
+                }
+
+                const rect = mapContainer.getBoundingClientRect();
+
+                if (rect.width === 0 || rect.height === 0) {
+                    console.error('[v0] Error: Contenedor del mapa no tiene dimensiones válidas');
+                    alert('Error: El contenedor del mapa no está visible. Por favor intente nuevamente.');
+                    return;
+                }
+
+                if (window.mapPuntoManual) {
+                    try {
+                        window.mapPuntoManual.off();
+                        window.mapPuntoManual.remove();
+                        window.mapPuntoManual = null;
+                    } catch (e) {
+                        console.error('[v0] Error al destruir mapa anterior:', e);
+                    }
+                }
+
+                window.tempMarkerPuntoManual = null;
+
+                try {
+                    window.mapPuntoManual = L.map('mapPuntoManual', {
+                        center: [mapaConfig.lat, mapaConfig.lng],
+                        zoom: mapaConfig.zoom,
+                        scrollWheelZoom: true
+                    });
+
+                    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                        attribution: '© OpenStreetMap contributors',
+                        maxZoom: 19
+                    }).addTo(window.mapPuntoManual);
+
+                    window.mapPuntoManual.on('click', function(e) {
+                        document.getElementById('punto_latitud').value = e.latlng.lat.toFixed(6);
+                        document.getElementById('punto_longitud').value = e.latlng.lng.toFixed(6);
+
+                        if (window.tempMarkerPuntoManual) {
+                            window.mapPuntoManual.removeLayer(window.tempMarkerPuntoManual);
+                        }
+
+                        window.tempMarkerPuntoManual = L.marker(e.latlng, {
+                            icon: L.divIcon({
+                                className: 'custom-marker',
+                                html: '<div style="background: #059669; color: white; border-radius: 50%; width: 30px; height: 30px; display: flex; align-items: center; justify-content: center; font-weight: bold;"><i class="bi bi-geo-alt-fill"></i></div>',
+                                iconSize: [30, 30]
+                            })
+                        }).addTo(window.mapPuntoManual);
+                    });
+
+                    setTimeout(() => {
+                        if (window.mapPuntoManual) {
+                            window.mapPuntoManual.invalidateSize();
+                        }
+                    }, 100);
+
+                } catch (error) {
+                    console.error('[v0] Error al crear mapa:', error);
+                    alert('Error al inicializar el mapa: ' + error.message);
+                }
+            }, 300);
+        };
+
+        modalElement.addEventListener('shown.bs.modal', window.mapInitListener);
+        modal.show();
+    }
+
+    function editarPunto(index) {
+        if (index < 0 || index >= puntosRuta.length) {
+            alert('Punto no válido');
+            return;
+        }
+
+        editingPointIndex = index;
+        const punto = puntosRuta[index];
+
+        // Pre-fill form with existing point data
+        document.getElementById('punto_nombre').value = punto.nombre || '';
+        document.getElementById('punto_direccion').value = punto.direccion || '';
+        document.getElementById('punto_latitud').value = punto.latitud || '';
+        document.getElementById('punto_longitud').value = punto.longitud || '';
+        document.getElementById('punto_tiempo').value = punto.tiempo_estimado_minutos || 30;
+        document.getElementById('punto_notas').value = punto.notas || '';
+        if (document.getElementById('guardar_como_ubicacion')) {
+            document.getElementById('guardar_como_ubicacion').checked = false;
+        }
+
+        document.querySelector('#modalPuntoManual .modal-title').textContent = 'Editar Punto';
+
+        const modalElement = document.getElementById('modalPuntoManual');
+        const modal = new bootstrap.Modal(modalElement);
+
+        if (window.mapInitListener) {
+            modalElement.removeEventListener('shown.bs.modal', window.mapInitListener);
+        }
+
+        window.mapInitListener = function() {
+            setTimeout(() => {
+                const mapContainer = document.getElementById('mapPuntoManual');
+
+                if (!mapContainer) {
+                    console.error('[v0] Error: Contenedor mapPuntoManual no encontrado en el DOM');
+                    alert('Error: No se pudo inicializar el mapa.');
+                    return;
+                }
+
+                if (window.mapPuntoManual) {
+                    try {
+                        window.mapPuntoManual.off();
+                        window.mapPuntoManual.remove();
+                        window.mapPuntoManual = null;
+                    } catch (e) {
+                        console.error('[v0] Error al destruir mapa anterior:', e);
+                    }
+                }
+
+                window.tempMarkerPuntoManual = null;
+
+                try {
+                    window.mapPuntoManual = L.map('mapPuntoManual', {
+                        center: [punto.latitud, punto.longitud],
+                        zoom: 15,
+                        scrollWheelZoom: true
+                    });
+
+                    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                        attribution: '© OpenStreetMap contributors',
+                        maxZoom: 19
+                    }).addTo(window.mapPuntoManual);
+
+                    // Add marker for existing point
+                    window.tempMarkerPuntoManual = L.marker([punto.latitud, punto.longitud], {
+                        icon: L.divIcon({
+                            className: 'custom-marker',
+                            html: '<div style="background: #059669; color: white; border-radius: 50%; width: 30px; height: 30px; display: flex; align-items: center; justify-content: center; font-weight: bold;"><i class="bi bi-geo-alt-fill"></i></div>',
+                            iconSize: [30, 30]
+                        })
+                    }).addTo(window.mapPuntoManual);
+
+                    window.mapPuntoManual.on('click', function(e) {
+                        document.getElementById('punto_latitud').value = e.latlng.lat.toFixed(6);
+                        document.getElementById('punto_longitud').value = e.latlng.lng.toFixed(6);
+
+                        if (window.tempMarkerPuntoManual) {
+                            window.mapPuntoManual.removeLayer(window.tempMarkerPuntoManual);
+                        }
+
+                        window.tempMarkerPuntoManual = L.marker(e.latlng, {
+                            icon: L.divIcon({
+                                className: 'custom-marker',
+                                html: '<div style="background: #059669; color: white; border-radius: 50%; width: 30px; height: 30px; display: flex; align-items: center; justify-content: center; font-weight: bold;"><i class="bi bi-geo-alt-fill"></i></div>',
+                                iconSize: [30, 30]
+                            })
+                        }).addTo(window.mapPuntoManual);
+                    });
+
+                    setTimeout(() => {
+                        if (window.mapPuntoManual) {
+                            window.mapPuntoManual.invalidateSize();
+                        }
+                    }, 100);
+
+                } catch (error) {
+                    console.error('[v0] Error al crear mapa:', error);
+                    alert('Error al inicializar el mapa: ' + error.message);
+                }
+            }, 300);
+        };
+
+        modalElement.addEventListener('shown.bs.modal', window.mapInitListener);
+        modal.show();
+    }
+
+    async function geocodificarDireccion() {
+        const direccion = document.getElementById('punto_direccion').value;
+        if (!direccion) {
+            alert('Por favor ingrese una dirección');
+            return;
+        }
+
+        if (!window.mapPuntoManual || typeof window.mapPuntoManual.setView !== 'function') {
+            alert('El mapa aún no está inicializado. Por favor espere un momento e intente nuevamente.');
+            return;
+        }
+
+        try {
+            const proyectoId = document.getElementById('proyecto_id').value;
+            let pais = 'Colombia';
+
+            if (proyectoId) {
+                const configResponse = await fetch(`/promotores-campo-system/api/ruta_crud.php?action=config_mapa&proyecto_id=${proyectoId}`);
+                const configResult = await configResponse.json();
+                if (configResult.success && configResult.data) {
+                    pais = configResult.data.pais || 'Colombia';
+                }
+            }
+
+            const response = await fetch(`/promotores-campo-system/api/ruta_crud.php?action=geocode&direccion=${encodeURIComponent(direccion)}&pais=${pais}`);
+            const result = await response.json();
+
+            console.log('[v0] Resultado de geocodificación:', result);
+
+            if (result.success && result.data && result.data.latitud && result.data.longitud) {
+                document.getElementById('punto_latitud').value = result.data.latitud;
+                document.getElementById('punto_longitud').value = result.data.longitud;
+
+                if (window.mapPuntoManual && typeof window.mapPuntoManual.removeLayer === 'function') {
+                    if (window.tempMarkerPuntoManual) {
+                        window.mapPuntoManual.removeLayer(window.tempMarkerPuntoManual);
+                    }
+
+                    const lat = parseFloat(result.data.latitud);
+                    const lng = parseFloat(result.data.longitud);
+
+                    window.tempMarkerPuntoManual = L.marker([lat, lng], {
+                        icon: L.divIcon({
+                            className: 'custom-marker',
+                            html: '<div style="background: #059669; color: white; border-radius: 50%; width: 30px; height: 30px; display: flex; align-items: center; justify-content: center; font-weight: bold;"><i class="bi bi-geo-alt-fill"></i></div>',
+                            iconSize: [30, 30]
+                        })
+                    }).addTo(window.mapPuntoManual);
+
+                    window.mapPuntoManual.setView([lat, lng], 15);
+                }
+
+                alert('Coordenadas encontradas correctamente');
+            } else {
+                alert('No se pudo geocodificar la dirección: ' + (result.message || 'Error desconocido'));
+            }
+        } catch (error) {
+            console.error('[v0] Error al geocodificar:', error);
+            alert('Error al buscar coordenadas');
+        }
+    }
+
+    function agregarDesdeUbicacion() {
+        if (ubicacionesDisponibles.length === 0) {
+            alert('No hay ubicaciones disponibles. Por favor seleccione un proyecto primero.');
+            return;
+        }
+
+        const tbody = document.getElementById('ubicacionesBody');
+        tbody.innerHTML = '';
+
+        ubicacionesDisponibles.forEach(ubic => {
+            const tr = document.createElement('tr');
+            tr.innerHTML = `
+                <td>${ubic.nombre_empresa || 'N/A'}</td>
+                <td>${ubic.nombre_ubicacion}</td>
+                <td>${ubic.direccion}</td>
+                <td>
+                    <button class="btn btn-sm btn-primary" onclick="seleccionarUbicacion(${ubic.id})">
+                        Seleccionar
+                    </button>
+                </td>
+            `;
+            tbody.appendChild(tr);
+        });
+
+        new bootstrap.Modal(document.getElementById('modalUbicaciones')).show();
+    }
+
+    function seleccionarUbicacion(ubicacionId) {
+        const ubic = ubicacionesDisponibles.find(u => u.id == ubicacionId);
+        if (!ubic) return;
+
+        puntosRuta.push({
+            nombre: ubic.nombre_ubicacion,
+            direccion: ubic.direccion,
+            latitud: parseFloat(ubic.latitud),
+            longitud: parseFloat(ubic.longitud),
+            tiempo_estimado_minutos: 30, // Valor por defecto, se puede hacer editable
+            notas: `Cliente: ${ubic.nombre_empresa}`,
+            ubicacion_cliente_id: ubic.id
+        });
+
+        actualizarListaPuntos();
+        actualizarMapaPreview();
+
+        bootstrap.Modal.getInstance(document.getElementById('modalUbicaciones')).hide();
+    }
+
+    async function guardarPuntoManual() {
         const nombre = document.getElementById('punto_nombre').value.trim();
         const direccion = document.getElementById('punto_direccion').value.trim();
         const latitud = parseFloat(document.getElementById('punto_latitud').value);
         const longitud = parseFloat(document.getElementById('punto_longitud').value);
         const tiempo = parseInt(document.getElementById('punto_tiempo').value);
         const notas = document.getElementById('punto_notas').value.trim();
+        const guardarComoUbicacion = document.getElementById('guardar_como_ubicacion')?.checked || false;
 
         if (!nombre || !direccion || isNaN(latitud) || isNaN(longitud)) {
             alert('Por favor complete todos los campos obligatorios y asegúrese de que las coordenadas sean válidas');
@@ -1208,7 +1320,71 @@ include '../includes/header.php';
             notas: notas
         };
 
-        puntosRuta.push(punto);
+        if (editingPointIndex !== null && editingPointIndex >= 0 && editingPointIndex < puntosRuta.length) {
+            // Update existing point
+            puntosRuta[editingPointIndex] = {
+                ...puntosRuta[editingPointIndex],
+                ...punto
+            };
+            editingPointIndex = null;
+        } else {
+            // Add new point
+            puntosRuta.push(punto);
+        }
+
+        if (guardarComoUbicacion) {
+            const proyectoId = document.getElementById('proyecto_id').value;
+            if (!proyectoId) {
+                alert('Por favor seleccione un proyecto primero');
+                return;
+            }
+
+            try {
+                // Obtener el cliente_id desde proyecto_clientes
+                const proyectoClienteResponse = await fetch(`../api/ruta_crud.php?action=get_cliente_from_proyecto&proyecto_id=${proyectoId}`);
+                const proyectoClienteResult = await proyectoClienteResponse.json();
+
+                console.log('[v0] Respuesta get_cliente_from_proyecto:', proyectoClienteResult);
+
+                if (proyectoClienteResult.success && proyectoClienteResult.data && proyectoClienteResult.data.cliente_id) {
+                    const response = await fetch('../api/ubicacion_reutilizable_crud.php', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json'
+                        },
+                        body: JSON.stringify({
+                            action: 'create',
+                            cliente_id: proyectoClienteResult.data.cliente_id,
+                            nombre_ubicacion: nombre,
+                            direccion: direccion,
+                            latitud: latitud,
+                            longitud: longitud,
+                            notas: notas
+                        })
+                    });
+
+                    const result = await response.json();
+                    console.log('[v0] Respuesta de guardar ubicación:', result);
+
+                    if (result.success) {
+                        console.log('[v0] Ubicación guardada como reutilizable con ID:', result.data?.id);
+                        // Reload available locations
+                        await cargarUbicacionesDisponibles();
+                        alert('Ubicación guardada exitosamente y estará disponible para futuras rutas');
+                    } else {
+                        console.warn('[v0] No se pudo guardar como ubicación reutilizable:', result.message);
+                        alert('Advertencia: No se pudo guardar como ubicación reutilizable. ' + result.message);
+                    }
+                } else {
+                    console.warn('[v0] No se pudo obtener el cliente_id del proyecto');
+                    alert('Advertencia: No se pudo guardar como ubicación reutilizable porque no se encontró el cliente asociado al proyecto.');
+                }
+            } catch (error) {
+                console.error('[v0] Error al guardar ubicación reutilizable:', error);
+                alert('Error al guardar ubicación reutilizable: ' + error.message);
+            }
+        }
+
         actualizarListaPuntos();
         actualizarMapaPreview();
 

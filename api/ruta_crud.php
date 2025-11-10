@@ -12,9 +12,9 @@ require_once '../db/Auditoria.php';
 require_once '../lib/PHPMailer.php';
 
 ob_end_clean();
-header('Content-Type: application/json');
+header('Content-Type: application/json; charset=utf-8');
 
-if (!isset($_SESSION['user_id']) || $_SESSION['role_name'] !== 'Supervisor') {
+if (!isset($_SESSION['user_id']) || !in_array($_SESSION['role_name'], ['Supervisor', 'Promotor'])) {
     echo json_encode(['success' => false, 'message' => 'No autorizado']);
     exit;
 }
@@ -56,37 +56,12 @@ try {
             $whereClause = implode(' AND ', $whereConditions);
 
             // Get total count
-            $stmtCount = $db->prepare("
-                SELECT COUNT(*) as total
-                FROM rutas_promotores rp
-                INNER JOIN supervisor_promotores sp ON rp.promotor_user_id = sp.promotor_id
-                WHERE {$whereClause}
-            ");
+            $stmtCount = $db->prepare("SELECT COUNT(*) as total FROM rutas_promotores rp INNER JOIN supervisor_promotores sp ON rp.promotor_user_id = sp.promotor_id WHERE {$whereClause}");
             $stmtCount->execute($params);
             $total = $stmtCount->fetch(PDO::FETCH_ASSOC)['total'];
 
             // Get paginated results
-            $stmt = $db->prepare("
-                SELECT 
-                    rp.id as ruta_id,
-                    rp.promotor_user_id,
-                    rp.proyecto_id,
-                    rp.nombre_ruta,
-                    rp.fecha_planificada,
-                    rp.estado,
-                    rp.distancia_total_km,
-                    rp.tiempo_total_minutos,
-                    u.nombre_completo as nombre_promotor,
-                    p.nombre_proyecto,
-                    (SELECT COUNT(*) FROM puntos_ruta WHERE ruta_id = rp.id) as num_puntos
-                FROM rutas_promotores rp
-                INNER JOIN usuarios u ON rp.promotor_user_id = u.id
-                INNER JOIN proyectos p ON rp.proyecto_id = p.id
-                INNER JOIN supervisor_promotores sp ON rp.promotor_user_id = sp.promotor_id
-                WHERE {$whereClause}
-                ORDER BY rp.fecha_planificada DESC
-                LIMIT ? OFFSET ?
-            ");
+            $stmt = $db->prepare("SELECT rp.id as ruta_id, rp.promotor_user_id, rp.proyecto_id, rp.nombre_ruta, rp.fecha_planificada, rp.estado, rp.distancia_total_km, rp.tiempo_total_minutos, u.nombre_completo as nombre_promotor, p.nombre_proyecto, (SELECT COUNT(*) FROM puntos_ruta WHERE ruta_id = rp.id) as num_puntos FROM rutas_promotores rp INNER JOIN usuarios u ON rp.promotor_user_id = u.id INNER JOIN proyectos p ON rp.proyecto_id = p.id INNER JOIN supervisor_promotores sp ON rp.promotor_user_id = sp.promotor_id WHERE {$whereClause} ORDER BY rp.fecha_planificada DESC LIMIT ? OFFSET ?");
             $params[] = $perPage;
             $params[] = $offset;
             $stmt->execute($params);
@@ -107,14 +82,7 @@ try {
         case 'get':
             $id = $_GET['id'] ?? 0;
 
-            $stmt = $db->prepare("
-                SELECT rp.*, u.nombre_completo as nombre_promotor, p.nombre_proyecto
-                FROM rutas_promotores rp
-                INNER JOIN usuarios u ON rp.promotor_user_id = u.id
-                INNER JOIN proyectos p ON rp.proyecto_id = p.id
-                INNER JOIN supervisor_promotores sp ON rp.promotor_user_id = sp.promotor_id
-                WHERE rp.id = ? AND sp.supervisor_id = ?
-            ");
+            $stmt = $db->prepare("SELECT rp.*, u.nombre_completo as nombre_promotor, p.nombre_proyecto FROM rutas_promotores rp INNER JOIN usuarios u ON rp.promotor_user_id = u.id INNER JOIN proyectos p ON rp.proyecto_id = p.id INNER JOIN supervisor_promotores sp ON rp.promotor_user_id = sp.promotor_id WHERE rp.id = ? AND sp.supervisor_id = ?");
             $stmt->execute([$id, $_SESSION['user_id']]);
             $ruta = $stmt->fetch(PDO::FETCH_ASSOC);
 
@@ -124,14 +92,7 @@ try {
             }
 
             // Obtener puntos de la ruta
-            $stmt = $db->prepare("
-                SELECT pr.*, uc.nombre_ubicacion, uc.cliente_id, c.nombre_empresa
-                FROM puntos_ruta pr
-                LEFT JOIN ubicaciones_clientes uc ON pr.ubicacion_cliente_id = uc.id
-                LEFT JOIN clientes c ON uc.cliente_id = c.id
-                WHERE pr.ruta_id = ?
-                ORDER BY pr.orden ASC
-            ");
+            $stmt = $db->prepare("SELECT pr.*, uc.nombre_ubicacion, uc.cliente_id, c.nombre_empresa FROM puntos_ruta pr LEFT JOIN ubicaciones_clientes uc ON pr.ubicacion_cliente_id = uc.id LEFT JOIN clientes c ON uc.cliente_id = c.id WHERE pr.ruta_id = ? ORDER BY pr.orden ASC");
             $stmt->execute([$id]);
             $ruta['puntos'] = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
@@ -141,14 +102,7 @@ try {
         case 'ubicaciones_disponibles':
             $proyectoId = $_GET['proyecto_id'] ?? 0;
 
-            $stmt = $db->prepare("
-                SELECT uc.*, c.nombre_empresa
-                FROM ubicaciones_clientes uc
-                INNER JOIN clientes c ON uc.cliente_id = c.id
-                INNER JOIN proyecto_clientes pc ON c.id = pc.cliente_id
-                WHERE pc.proyecto_id = ? AND uc.activo = 1
-                ORDER BY c.nombre_empresa, uc.nombre_ubicacion
-            ");
+            $stmt = $db->prepare("SELECT uc.*, c.nombre_empresa FROM ubicaciones_clientes uc INNER JOIN clientes c ON uc.cliente_id = c.id INNER JOIN proyecto_clientes pc ON c.id = pc.cliente_id WHERE pc.proyecto_id = ? AND uc.activo = 1 ORDER BY c.nombre_empresa, uc.nombre_ubicacion");
             $stmt->execute([$proyectoId]);
             $ubicaciones = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
@@ -168,8 +122,17 @@ try {
             }
 
             $coordenadas = array_map(function ($p) {
-                return [floatval($p['longitud']), floatval($p['latitud'])];
+                $lng = floatval($p['longitud'] ?? $p['lng'] ?? $p['lon'] ?? 0);
+                $lat = floatval($p['latitud'] ?? $p['lat'] ?? 0);
+                return [$lng, $lat];
             }, $puntos);
+
+            foreach ($coordenadas as $coord) {
+                if ($coord[1] < -90 || $coord[1] > 90 || $coord[0] < -180 || $coord[0] > 180) {
+                    echo json_encode(['success' => false, 'message' => 'Coordenadas inválidas detectadas']);
+                    exit;
+                }
+            }
 
             $orsUrl = 'https://api.openrouteservice.org/v2/directions/driving-car/geojson';
             $orsData = [
@@ -274,10 +237,7 @@ try {
             }
 
             // Verificar que el promotor esté bajo supervisión
-            $stmt = $db->prepare("
-                SELECT 1 FROM supervisor_promotores 
-                WHERE supervisor_id = ? AND promotor_id = ?
-            ");
+            $stmt = $db->prepare("SELECT 1 FROM supervisor_promotores WHERE supervisor_id = ? AND promotor_id = ?");
             $stmt->execute([$_SESSION['user_id'], $promotorId]);
 
             if (!$stmt->fetch()) {
@@ -318,7 +278,7 @@ try {
                     curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
                     curl_setopt($ch, CURLOPT_HTTPHEADER, [
                         'Content-Type: application/json',
-                        'Authorization: 5b3ce3597851100001cf62482bc308c9ad3d743be89eb3dbb2373bed6'
+                        'Authorization: eyJvcmciOiI1YjNjZTM1OTc4NTExMTAwMDFjZjYyNDgiLCJpZCI6ImJjMzA4YzlhZDNkNzQzYmU4OWViM2RiYjIzNzNiZWQ2IiwiaCI6Im11cm11cjY0In0='
                     ]);
 
                     $response = curl_exec($ch);
@@ -338,19 +298,14 @@ try {
                 $puntosResumen = array_map(function ($p, $index) {
                     return [
                         'orden' => $index + 1,
-                        'nombre' => $p['nombre'],
+                        'nombre' => $p['nombre'] ?? "Punto " . ($index + 1),
                         'latitud' => floatval($p['latitud']),
                         'longitud' => floatval($p['longitud'])
                     ];
                 }, $puntos, array_keys($puntos));
 
                 if ($rutaId) {
-                    $stmt = $db->prepare("
-                        UPDATE rutas_promotores 
-                        SET promotor_user_id = ?, proyecto_id = ?, nombre_ruta = ?, fecha_planificada = ?,
-                            puntos_ruta = ?, ruta_optimizada = ?, distancia_total_km = ?, tiempo_total_minutos = ?
-                        WHERE id = ?
-                    ");
+                    $stmt = $db->prepare("UPDATE rutas_promotores SET promotor_user_id = ?, proyecto_id = ?, nombre_ruta = ?, fecha_planificada = ?, puntos_ruta = ?, ruta_optimizada = ?, distancia_total_km = ?, tiempo_total_minutos = ? WHERE id = ?");
                     $stmt->execute([
                         $promotorId,
                         $proyectoId,
@@ -370,11 +325,7 @@ try {
                     $message = 'Ruta actualizada exitosamente';
                     $tipoNotificacion = 'ruta_actualizada';
                 } else {
-                    $stmt = $db->prepare("
-                        INSERT INTO rutas_promotores 
-                        (promotor_user_id, proyecto_id, nombre_ruta, fecha_planificada, puntos_ruta, estado, ruta_optimizada, distancia_total_km, tiempo_total_minutos)
-                        VALUES (?, ?, ?, ?, ?, 'pendiente', ?, ?, ?)
-                    ");
+                    $stmt = $db->prepare("INSERT INTO rutas_promotores (promotor_user_id, proyecto_id, nombre_ruta, fecha_planificada, puntos_ruta, estado, ruta_optimizada, distancia_total_km, tiempo_total_minutos) VALUES (?, ?, ?, ?, ?, 'pendiente', ?, ?, ?)");
                     $stmt->execute([
                         $promotorId,
                         $proyectoId,
@@ -391,10 +342,7 @@ try {
                     $tipoNotificacion = 'ruta_asignada';
                 }
 
-                $stmtPunto = $db->prepare("
-                    INSERT INTO puntos_ruta (ruta_id, orden, nombre, direccion, latitud, longitud, ubicacion_cliente_id, notas, tiempo_estimado_minutos)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-                ");
+                $stmtPunto = $db->prepare("INSERT INTO puntos_ruta (ruta_id, orden, nombre, direccion, latitud, longitud, ubicacion_cliente_id, notas, tiempo_estimado_minutos) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)");
 
                 foreach ($puntos as $index => $punto) {
                     $stmtPunto->execute([
@@ -433,13 +381,8 @@ try {
                 }
 
                 // Crear notificación en sistema
-                $stmt = $db->prepare("
-                    INSERT INTO notificaciones (usuario_id, mensaje, tipo_notificacion, referencia_id)
-                    VALUES (?, ?, ?, ?)
-                ");
-                $mensajeNotif = $tipoNotificacion === 'ruta_asignada'
-                    ? "Se te ha asignado una nueva ruta: {$nombreRuta} para el {$fechaPlanificada}"
-                    : "La ruta {$nombreRuta} ha sido actualizada";
+                $stmt = $db->prepare("INSERT INTO notificaciones (usuario_id, mensaje, tipo_notificacion, referencia_id) VALUES (?, ?, ?, ?)");
+                $mensajeNotif = $tipoNotificacion === 'ruta_asignada' ? "Se te ha asignado una nueva ruta: {$nombreRuta} para el {$fechaPlanificada}" : "La ruta {$nombreRuta} ha sido actualizada";
 
                 $stmt->execute([$promotorId, $mensajeNotif, $tipoNotificacion, $rutaId]);
 
@@ -473,12 +416,7 @@ try {
             $id = $_GET['id'] ?? 0;
 
             // Verificar permisos
-            $stmt = $db->prepare("
-                SELECT rp.promotor_user_id
-                FROM rutas_promotores rp
-                INNER JOIN supervisor_promotores sp ON rp.promotor_user_id = sp.promotor_id
-                WHERE rp.id = ? AND sp.supervisor_id = ?
-            ");
+            $stmt = $db->prepare("SELECT rp.promotor_user_id FROM rutas_promotores rp INNER JOIN supervisor_promotores sp ON rp.promotor_user_id = sp.promotor_id WHERE rp.id = ? AND sp.supervisor_id = ?");
             $stmt->execute([$id, $_SESSION['user_id']]);
 
             if (!$stmt->fetch()) {
@@ -504,13 +442,7 @@ try {
         case 'config_mapa':
             $proyectoId = $_GET['proyecto_id'] ?? 0;
 
-            $stmt = $db->prepare("
-                SELECT c.mapa_centro_lat, c.mapa_centro_lng, c.mapa_zoom, c.pais
-                FROM clientes c
-                INNER JOIN proyecto_clientes pc ON c.id = pc.cliente_id
-                WHERE pc.proyecto_id = ?
-                LIMIT 1
-            ");
+            $stmt = $db->prepare("SELECT c.mapa_centro_lat, c.mapa_centro_lng, c.mapa_zoom, c.pais FROM clientes c INNER JOIN proyecto_clientes pc ON c.id = pc.cliente_id WHERE pc.proyecto_id = ? LIMIT 1");
             $stmt->execute([$proyectoId]);
             $config = $stmt->fetch(PDO::FETCH_ASSOC);
 
@@ -526,11 +458,82 @@ try {
             echo json_encode(['success' => true, 'data' => $config]);
             break;
 
-        default:
-            echo json_encode(['success' => false, 'message' => 'Acción no válida']);
+        case 'get_cliente_from_proyecto':
+            $proyectoId = $_GET['proyecto_id'] ?? 0;
+
+            $stmt = $db->prepare("SELECT cliente_id FROM proyecto_clientes WHERE proyecto_id = ? LIMIT 1");
+            $stmt->execute([$proyectoId]);
+            $result = $stmt->fetch(PDO::FETCH_ASSOC);
+
+            if (!$result) {
+                echo json_encode(['success' => false, 'message' => 'No se encontró cliente asociado al proyecto']);
+                exit;
+            }
+
+            echo json_encode(['success' => true, 'data' => ['cliente_id' => $result['cliente_id']]]);
+            break;
+
+        case 'detail':
+            $id = $_GET['id'] ?? 0;
+
+            error_log("[DETAIL] Requested route ID: $id by user {$_SESSION['user_id']} ({$_SESSION['role_name']})");
+
+            // Check if user has access to this route
+            if ($_SESSION['role_name'] === 'Promotor') {
+                $stmt = $db->prepare("SELECT rp.*, p.nombre_proyecto FROM rutas_promotores rp INNER JOIN proyectos p ON rp.proyecto_id = p.id WHERE rp.id = ? AND rp.promotor_user_id = ?");
+                $stmt->execute([$id, $_SESSION['user_id']]);
+            } else {
+                // Supervisor access
+                $stmt = $db->prepare("SELECT rp.*, u.nombre_completo as nombre_promotor, p.nombre_proyecto FROM rutas_promotores rp INNER JOIN usuarios u ON rp.promotor_user_id = u.id INNER JOIN proyectos p ON rp.proyecto_id = p.id INNER JOIN supervisor_promotores sp ON rp.promotor_user_id = sp.promotor_id WHERE rp.id = ? AND sp.supervisor_id = ?");
+                $stmt->execute([$id, $_SESSION['user_id']]);
+            }
+
+            $ruta = $stmt->fetch(PDO::FETCH_ASSOC);
+
+            if (!$ruta) {
+                error_log("[DETAIL] Route not found or unauthorized for ID: $id");
+                echo json_encode(['success' => false, 'message' => 'Ruta no encontrada o no autorizado']);
+                exit;
+            }
+
+            $stmt = $db->prepare("SELECT pr.id as punto_id, pr.orden, pr.nombre, pr.direccion, pr.latitud, pr.longitud, pr.ubicacion_cliente_id, pr.notas, pr.estado, pr.tiempo_estimado_minutos, pr.tiempo_real_minutos, pr.distancia_desde_anterior_km, uc.nombre_ubicacion, uc.cliente_id, c.nombre_empresa FROM puntos_ruta pr LEFT JOIN ubicaciones_clientes uc ON pr.ubicacion_cliente_id = uc.id LEFT JOIN clientes c ON uc.cliente_id = c.id WHERE pr.ruta_id = ? ORDER BY pr.orden ASC");
+            $stmt->execute([$id]);
+            $puntos = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+            error_log("[DETAIL] Found " . count($puntos) . " points for route $id");
+
+            // Format points for response - ensure all fields are present
+            $ruta['puntos_ruta'] = array_map(function ($p) {
+                return [
+                    'punto_id' => $p['punto_id'],
+                    'orden' => $p['orden'],
+                    'nombre' => $p['nombre'],
+                    'direccion' => $p['direccion'] ?: 'Sin dirección especificada',
+                    'latitud' => floatval($p['latitud']),
+                    'longitud' => floatval($p['longitud']),
+                    'lat' => floatval($p['latitud']), // Alias
+                    'lng' => floatval($p['longitud']), // Alias
+                    'ubicacion_cliente_id' => $p['ubicacion_cliente_id'],
+                    'notas' => $p['notas'],
+                    'estado' => $p['estado'] ?: 'pendiente',
+                    'tiempo_estimado_minutos' => $p['tiempo_estimado_minutos'],
+                    'tiempo_real_minutos' => $p['tiempo_real_minutos'],
+                    'distancia_desde_anterior_km' => $p['distancia_desde_anterior_km'],
+                    'nombre_ubicacion' => $p['nombre_ubicacion'],
+                    'cliente_id' => $p['cliente_id'],
+                    'nombre_empresa' => $p['nombre_empresa']
+                ];
+            }, $puntos);
+
+            $ruta['ruta_id'] = $ruta['id'];
+            $ruta['id'] = $ruta['id']; // Keep both for compatibility
+
+            error_log("[DETAIL] Sending response with " . count($ruta['puntos_ruta']) . " points");
+            echo json_encode(['success' => true, 'ruta' => $ruta], JSON_PRETTY_PRINT);
             break;
     }
 } catch (Exception $e) {
     error_log("Error en ruta_crud.php: " . $e->getMessage());
-    echo json_encode(['success' => false, 'message' => $e->getMessage()]);
+    error_log("Stack trace: " . $e->getTraceAsString());
+    echo json_encode(['success' => false, 'message' => 'Error interno: ' . $e->getMessage()]);
 }
