@@ -14,8 +14,16 @@ require_once '../lib/PHPMailer.php';
 ob_end_clean();
 header('Content-Type: application/json; charset=utf-8');
 
-if (!isset($_SESSION['user_id']) || !in_array($_SESSION['role_name'], ['Supervisor', 'Promotor'])) {
-    echo json_encode(['success' => false, 'message' => 'No autorizado']);
+if (!isset($_SESSION['user_id'])) {
+    echo json_encode(['success' => false, 'message' => 'No autorizado - Sesión no válida']);
+    exit;
+}
+
+$userRole = $_SESSION['role_name'] ?? '';
+$allowedRoles = ['Supervisor', 'Promotor'];
+
+if (!in_array($userRole, $allowedRoles)) {
+    echo json_encode(['success' => false, 'message' => 'No autorizado - Rol no permitido']);
     exit;
 }
 
@@ -23,6 +31,12 @@ $db = Database::getInstance()->getConnection();
 $auditoriaModel = new Auditoria();
 
 $action = $_GET['action'] ?? $_POST['action'] ?? '';
+
+if (empty($action)) {
+    $input = file_get_contents('php://input');
+    $jsonData = json_decode($input, true);
+    $action = $jsonData['action'] ?? '';
+}
 
 try {
     switch ($action) {
@@ -473,67 +487,178 @@ try {
             echo json_encode(['success' => true, 'data' => ['cliente_id' => $result['cliente_id']]]);
             break;
 
-        case 'detail':
-            $id = $_GET['id'] ?? 0;
+        case 'iniciar_ruta':
+            $input = file_get_contents('php://input');
+            $data = json_decode($input, true);
+            $rutaId = $data['ruta_id'] ?? 0;
 
-            error_log("[DETAIL] Requested route ID: $id by user {$_SESSION['user_id']} ({$_SESSION['role_name']})");
-
-            // Check if user has access to this route
-            if ($_SESSION['role_name'] === 'Promotor') {
-                $stmt = $db->prepare("SELECT rp.*, p.nombre_proyecto FROM rutas_promotores rp INNER JOIN proyectos p ON rp.proyecto_id = p.id WHERE rp.id = ? AND rp.promotor_user_id = ?");
-                $stmt->execute([$id, $_SESSION['user_id']]);
-            } else {
-                // Supervisor access
-                $stmt = $db->prepare("SELECT rp.*, u.nombre_completo as nombre_promotor, p.nombre_proyecto FROM rutas_promotores rp INNER JOIN usuarios u ON rp.promotor_user_id = u.id INNER JOIN proyectos p ON rp.proyecto_id = p.id INNER JOIN supervisor_promotores sp ON rp.promotor_user_id = sp.promotor_id WHERE rp.id = ? AND sp.supervisor_id = ?");
-                $stmt->execute([$id, $_SESSION['user_id']]);
-            }
-
-            $ruta = $stmt->fetch(PDO::FETCH_ASSOC);
-
-            if (!$ruta) {
-                error_log("[DETAIL] Route not found or unauthorized for ID: $id");
-                echo json_encode(['success' => false, 'message' => 'Ruta no encontrada o no autorizado']);
+            if (!$rutaId) {
+                echo json_encode(['success' => false, 'message' => 'ID de ruta requerido']);
                 exit;
             }
 
-            $stmt = $db->prepare("SELECT pr.id as punto_id, pr.orden, pr.nombre, pr.direccion, pr.latitud, pr.longitud, pr.ubicacion_cliente_id, pr.notas, pr.estado, pr.tiempo_estimado_minutos, pr.tiempo_real_minutos, pr.distancia_desde_anterior_km, uc.nombre_ubicacion, uc.cliente_id, c.nombre_empresa FROM puntos_ruta pr LEFT JOIN ubicaciones_clientes uc ON pr.ubicacion_cliente_id = uc.id LEFT JOIN clientes c ON uc.cliente_id = c.id WHERE pr.ruta_id = ? ORDER BY pr.orden ASC");
-            $stmt->execute([$id]);
-            $puntos = $stmt->fetchAll(PDO::FETCH_ASSOC);
+            // Verificar que la ruta pertenece al promotor
+            $stmt = $db->prepare("SELECT estado FROM rutas_promotores WHERE id = ? AND promotor_user_id = ?");
+            $stmt->execute([$rutaId, $_SESSION['user_id']]);
+            $ruta = $stmt->fetch(PDO::FETCH_ASSOC);
 
-            error_log("[DETAIL] Found " . count($puntos) . " points for route $id");
+            if (!$ruta) {
+                echo json_encode(['success' => false, 'message' => 'Ruta no encontrada o no autorizada']);
+                exit;
+            }
 
-            // Format points for response - ensure all fields are present
-            $ruta['puntos_ruta'] = array_map(function ($p) {
-                return [
-                    'punto_id' => $p['punto_id'],
-                    'orden' => $p['orden'],
-                    'nombre' => $p['nombre'],
-                    'direccion' => $p['direccion'] ?: 'Sin dirección especificada',
-                    'latitud' => floatval($p['latitud']),
-                    'longitud' => floatval($p['longitud']),
-                    'lat' => floatval($p['latitud']), // Alias
-                    'lng' => floatval($p['longitud']), // Alias
-                    'ubicacion_cliente_id' => $p['ubicacion_cliente_id'],
-                    'notas' => $p['notas'],
-                    'estado' => $p['estado'] ?: 'pendiente',
-                    'tiempo_estimado_minutos' => $p['tiempo_estimado_minutos'],
-                    'tiempo_real_minutos' => $p['tiempo_real_minutos'],
-                    'distancia_desde_anterior_km' => $p['distancia_desde_anterior_km'],
-                    'nombre_ubicacion' => $p['nombre_ubicacion'],
-                    'cliente_id' => $p['cliente_id'],
-                    'nombre_empresa' => $p['nombre_empresa']
-                ];
-            }, $puntos);
+            if ($ruta['estado'] !== 'pendiente' && $ruta['estado'] !== 'pausada') {
+                echo json_encode(['success' => false, 'message' => 'La ruta no está en estado pendiente o pausada']);
+                exit;
+            }
 
-            $ruta['ruta_id'] = $ruta['id'];
-            $ruta['id'] = $ruta['id']; // Keep both for compatibility
+            // Actualizar estado a en_progreso
+            $stmt = $db->prepare("UPDATE rutas_promotores SET estado = 'en_progreso', fecha_inicio = NOW() WHERE id = ?");
+            $stmt->execute([$rutaId]);
 
-            error_log("[DETAIL] Sending response with " . count($ruta['puntos_ruta']) . " points");
-            echo json_encode(['success' => true, 'ruta' => $ruta], JSON_PRETTY_PRINT);
+            // Auditoría
+            $auditoriaModel->registrar(
+                $_SESSION['user_id'],
+                'UPDATE',
+                'rutas_promotores',
+                $rutaId,
+                'Ruta iniciada'
+            );
+
+            echo json_encode(['success' => true, 'message' => 'Ruta iniciada exitosamente']);
+            break;
+
+        case 'pausar_ruta':
+            $input = file_get_contents('php://input');
+            $data = json_decode($input, true);
+            $rutaId = $data['ruta_id'] ?? 0;
+
+            if (!$rutaId) {
+                echo json_encode(['success' => false, 'message' => 'ID de ruta requerido']);
+                exit;
+            }
+
+            // Verificar que la ruta pertenece al promotor
+            $stmt = $db->prepare("SELECT estado FROM rutas_promotores WHERE id = ? AND promotor_user_id = ?");
+            $stmt->execute([$rutaId, $_SESSION['user_id']]);
+            $ruta = $stmt->fetch(PDO::FETCH_ASSOC);
+
+            if (!$ruta) {
+                echo json_encode(['success' => false, 'message' => 'Ruta no encontrada o no autorizada']);
+                exit;
+            }
+
+            if ($ruta['estado'] !== 'en_progreso') {
+                echo json_encode(['success' => false, 'message' => 'La ruta no está en progreso']);
+                exit;
+            }
+
+            // Actualizar estado a pausada
+            $stmt = $db->prepare("UPDATE rutas_promotores SET estado = 'pausada' WHERE id = ?");
+            $stmt->execute([$rutaId]);
+
+            // Auditoría
+            $auditoriaModel->registrar(
+                $_SESSION['user_id'],
+                'UPDATE',
+                'rutas_promotores',
+                $rutaId,
+                'Ruta pausada'
+            );
+
+            echo json_encode(['success' => true, 'message' => 'Ruta pausada exitosamente']);
+            break;
+
+        case 'reanudar_ruta':
+            $input = file_get_contents('php://input');
+            $data = json_decode($input, true);
+            $rutaId = $data['ruta_id'] ?? 0;
+
+            if (!$rutaId) {
+                echo json_encode(['success' => false, 'message' => 'ID de ruta requerido']);
+                exit;
+            }
+
+            // Verificar que la ruta pertenece al promotor
+            $stmt = $db->prepare("SELECT estado FROM rutas_promotores WHERE id = ? AND promotor_user_id = ?");
+            $stmt->execute([$rutaId, $_SESSION['user_id']]);
+            $ruta = $stmt->fetch(PDO::FETCH_ASSOC);
+
+            if (!$ruta) {
+                echo json_encode(['success' => false, 'message' => 'Ruta no encontrada o no autorizada']);
+                exit;
+            }
+
+            if ($ruta['estado'] !== 'pausada') {
+                echo json_encode(['success' => false, 'message' => 'La ruta no está pausada']);
+                exit;
+            }
+
+            // Actualizar estado a en_progreso
+            $stmt = $db->prepare("UPDATE rutas_promotores SET estado = 'en_progreso' WHERE id = ?");
+            $stmt->execute([$rutaId]);
+
+            // Auditoría
+            $auditoriaModel->registrar(
+                $_SESSION['user_id'],
+                'UPDATE',
+                'rutas_promotores',
+                $rutaId,
+                'Ruta reanudada'
+            );
+
+            echo json_encode(['success' => true, 'message' => 'Ruta reanudada exitosamente']);
+            break;
+
+        case 'finalizar_ruta':
+            $input = file_get_contents('php://input');
+            $data = json_decode($input, true);
+            $rutaId = $data['ruta_id'] ?? 0;
+
+            if (!$rutaId) {
+                echo json_encode(['success' => false, 'message' => 'ID de ruta requerido']);
+                exit;
+            }
+
+            // Verificar que la ruta pertenece al promotor
+            $stmt = $db->prepare("SELECT estado FROM rutas_promotores WHERE id = ? AND promotor_user_id = ?");
+            $stmt->execute([$rutaId, $_SESSION['user_id']]);
+            $ruta = $stmt->fetch(PDO::FETCH_ASSOC);
+
+            if (!$ruta) {
+                echo json_encode(['success' => false, 'message' => 'Ruta no encontrada o no autorizada']);
+                exit;
+            }
+
+            if ($ruta['estado'] !== 'en_progreso' && $ruta['estado'] !== 'pausada') {
+                echo json_encode(['success' => false, 'message' => 'La ruta debe estar en progreso o pausada para finalizarla']);
+                exit;
+            }
+
+            // Actualizar estado a completada
+            $stmt = $db->prepare("UPDATE rutas_promotores SET estado = 'completada', fecha_fin = NOW() WHERE id = ?");
+            $stmt->execute([$rutaId]);
+
+            // Auditoría
+            $auditoriaModel->registrar(
+                $_SESSION['user_id'],
+                'UPDATE',
+                'rutas_promotores',
+                $rutaId,
+                'Ruta finalizada'
+            );
+
+            echo json_encode(['success' => true, 'message' => 'Ruta finalizada exitosamente']);
+            break;
+
+        default:
+            echo json_encode(['success' => false, 'message' => 'Acción no válida: ' . $action]);
             break;
     }
 } catch (Exception $e) {
     error_log("Error en ruta_crud.php: " . $e->getMessage());
-    error_log("Stack trace: " . $e->getTraceAsString());
-    echo json_encode(['success' => false, 'message' => 'Error interno: ' . $e->getMessage()]);
+    echo json_encode([
+        'success' => false,
+        'message' => 'Error del servidor: ' . $e->getMessage()
+    ]);
 }

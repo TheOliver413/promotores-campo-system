@@ -32,12 +32,13 @@ try {
     switch ($action) {
         case 'actualizar_punto':
             $rutaId = $_POST['ruta_id'] ?? 0;
+            $puntoId = $_POST['punto_id'] ?? 0;
             $puntoIndex = isset($_POST['punto_index']) ? (int)$_POST['punto_index'] : -1;
             $estado = $_POST['estado'] ?? 'pendiente';
             $notas = $_POST['notas'] ?? '';
 
-            if ($puntoIndex < 0) {
-                echo json_encode(['success' => false, 'message' => 'Índice de punto inválido']);
+            if (!$puntoId && $puntoIndex < 0) {
+                echo json_encode(['success' => false, 'message' => 'ID o índice de punto requerido']);
                 exit;
             }
 
@@ -54,17 +55,33 @@ try {
             // Parse puntos_ruta JSON
             $puntosRuta = json_decode($ruta['puntos_ruta'], true);
 
-            if (!is_array($puntosRuta) || !isset($puntosRuta[$puntoIndex])) {
+            // Find punto by ID or index
+            $puntoEncontrado = false;
+            $puntoActualIndex = -1;
+
+            if ($puntoId > 0) {
+                $stmt = $db->prepare("SELECT * FROM puntos_ruta WHERE id = ? AND ruta_id = ?");
+                $stmt->execute([$puntoId, $rutaId]);
+                $puntoData = $stmt->fetch(PDO::FETCH_ASSOC);
+
+                if ($puntoData) {
+                    $puntoEncontrado = true;
+                    $puntoActualIndex = $puntoData['orden'] - 1;
+                }
+            } elseif ($puntoIndex >= 0 && isset($puntosRuta[$puntoIndex])) {
+                $puntoEncontrado = true;
+                $puntoActualIndex = $puntoIndex;
+
+                // Get punto_id from puntos_ruta table
+                $stmt = $db->prepare("SELECT id FROM puntos_ruta WHERE ruta_id = ? AND orden = ?");
+                $stmt->execute([$rutaId, $puntoIndex + 1]);
+                $puntoId = $stmt->fetchColumn();
+            }
+
+            if (!$puntoEncontrado || $puntoActualIndex < 0) {
                 echo json_encode(['success' => false, 'message' => 'Punto no encontrado en la ruta']);
                 exit;
             }
-
-            // Update point data
-            $puntosRuta[$puntoIndex]['estado'] = $estado;
-            $puntosRuta[$puntoIndex]['notas'] = $notas;
-            $puntosRuta[$puntoIndex]['visitado'] = ($estado !== 'pendiente');
-            $puntosRuta[$puntoIndex]['completado'] = ($estado !== 'pendiente');
-            $puntosRuta[$puntoIndex]['fecha_actualizacion'] = date('Y-m-d H:i:s');
 
             // Handle file uploads (evidencias)
             $evidencias = [];
@@ -82,41 +99,84 @@ try {
                         $targetPath = $uploadDir . $fileName;
 
                         if (move_uploaded_file($tmpName, $targetPath)) {
-                            $evidencias[] = 'uploads/evidencias/' . $fileName;
+                            $evidencias[] = [
+                                'url' => 'uploads/evidencias/' . $fileName,
+                                'tipo' => $_FILES['evidencias']['type'][$key],
+                                'fecha' => date('Y-m-d H:i:s')
+                            ];
                         }
                     }
                 }
             }
 
-            // Add evidencias to point if any were uploaded
-            if (!empty($evidencias)) {
-                if (!isset($puntosRuta[$puntoIndex]['evidencias'])) {
-                    $puntosRuta[$puntoIndex]['evidencias'] = [];
+            // Update puntos_ruta table
+            if ($puntoId) {
+                $db->beginTransaction();
+
+                try {
+                    $stmt = $db->prepare("UPDATE puntos_ruta SET estado = ?, notas = ?, visitado = ?, fecha_visita = ? WHERE id = ?");
+                    $stmt->execute([
+                        $estado,
+                        $notas,
+                        ($estado !== 'pendiente') ? 1 : 0,
+                        ($estado !== 'pendiente') ? date('Y-m-d H:i:s') : null,
+                        $puntoId
+                    ]);
+
+                    if (!empty($evidencias)) {
+                        // Get existing evidencias
+                        $stmt = $db->prepare("SELECT evidencias FROM puntos_ruta WHERE id = ?");
+                        $stmt->execute([$puntoId]);
+                        $existingEvidencias = $stmt->fetchColumn();
+
+                        $evidenciasArray = $existingEvidencias ? json_decode($existingEvidencias, true) : [];
+                        if (!is_array($evidenciasArray)) {
+                            $evidenciasArray = [];
+                        }
+
+                        $evidenciasArray = array_merge($evidenciasArray, $evidencias);
+
+                        // Update evidencias in database
+                        $stmt = $db->prepare("UPDATE puntos_ruta SET evidencias = ? WHERE id = ?");
+                        $stmt->execute([json_encode($evidenciasArray), $puntoId]);
+                    }
+
+                    if (is_array($puntosRuta) && isset($puntosRuta[$puntoActualIndex])) {
+                        $puntosRuta[$puntoActualIndex]['estado'] = $estado;
+                        $puntosRuta[$puntoActualIndex]['notas'] = $notas;
+                        $puntosRuta[$puntoActualIndex]['visitado'] = ($estado !== 'pendiente');
+                        $puntosRuta[$puntoActualIndex]['completado'] = ($estado !== 'pendiente');
+                        $puntosRuta[$puntoActualIndex]['fecha_actualizacion'] = date('Y-m-d H:i:s');
+
+                        if (!empty($evidencias)) {
+                            if (!isset($puntosRuta[$puntoActualIndex]['evidencias'])) {
+                                $puntosRuta[$puntoActualIndex]['evidencias'] = [];
+                            }
+                            $puntosRuta[$puntoActualIndex]['evidencias'] = array_merge(
+                                $puntosRuta[$puntoActualIndex]['evidencias'] ?? [],
+                                $evidencias
+                            );
+                        }
+
+                        $stmt = $db->prepare("UPDATE rutas_promotores SET puntos_ruta = ? WHERE id = ?");
+                        $stmt->execute([json_encode($puntosRuta), $rutaId]);
+                    }
+
+                    $db->commit();
+
+                    // Get updated punto data
+                    $stmt = $db->prepare("SELECT * FROM puntos_ruta WHERE id = ?");
+                    $stmt->execute([$puntoId]);
+                    $puntoActualizado = $stmt->fetch(PDO::FETCH_ASSOC);
+
+                    // Parse evidencias if stored as JSON
+                    if (isset($puntoActualizado['evidencias']) && is_string($puntoActualizado['evidencias'])) {
+                        $puntoActualizado['evidencias'] = json_decode($puntoActualizado['evidencias'], true);
+                    }
+                } catch (Exception $e) {
+                    $db->rollBack();
+                    throw $e;
                 }
-                $puntosRuta[$puntoIndex]['evidencias'] = array_merge(
-                    $puntosRuta[$puntoIndex]['evidencias'] ?? [],
-                    $evidencias
-                );
-            }
-
-            // Update the route in database
-            $stmt = $db->prepare("UPDATE rutas_promotores SET puntos_ruta = ? WHERE id = ?");
-            $stmt->execute([json_encode($puntosRuta), $rutaId]);
-
-            // Also update puntos_ruta table if it exists
-            $stmt = $db->prepare("SELECT id FROM puntos_ruta WHERE ruta_id = ? AND orden = ?");
-            $stmt->execute([$rutaId, $puntoIndex + 1]);
-            $puntoRutaId = $stmt->fetchColumn();
-
-            if ($puntoRutaId) {
-                $stmt = $db->prepare("UPDATE puntos_ruta SET estado = ?, notas = ?, visitado = ?, fecha_visita = ? WHERE id = ?");
-                $stmt->execute([
-                    $estado,
-                    $notas,
-                    ($estado !== 'pendiente') ? 1 : 0,
-                    ($estado !== 'pendiente') ? date('Y-m-d H:i:s') : null,
-                    $puntoRutaId
-                ]);
             }
 
             // Register audit
@@ -125,16 +185,18 @@ try {
                 'UPDATE',
                 'rutas_promotores',
                 $rutaId,
-                "Punto {$puntoIndex} actualizado con estado: {$estado}"
+                "Punto actualizado con estado: {$estado}"
             );
 
             echo json_encode([
                 'success' => true,
                 'message' => 'Punto actualizado exitosamente',
-                'data' => [
-                    'punto_index' => $puntoIndex,
+                'punto_data' => $puntoActualizado ?? [
+                    'punto_id' => $puntoId,
                     'estado' => $estado,
-                    'evidencias' => $evidencias
+                    'notas' => $notas,
+                    'evidencias' => $evidencias,
+                    'visitado' => ($estado !== 'pendiente')
                 ]
             ]);
             break;
