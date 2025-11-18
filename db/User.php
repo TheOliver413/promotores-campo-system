@@ -16,7 +16,7 @@ class User
             SELECT u.*, r.nombre as role_name 
             FROM usuarios u 
             JOIN roles r ON u.role_id = r.id 
-            WHERE u.email = ? AND u.estado = 'activo'
+            WHERE u.email = ? AND u.estado = 'activo' AND u.deleted = 0
         ");
         $stmt->execute([$email]);
         $user = $stmt->fetch();
@@ -66,15 +66,15 @@ class User
     public function getAll($filters = [])
     {
         $sql = "SELECT u.*, r.nombre as role_name,
-                GROUP_CONCAT(DISTINCT c.nombre_empresa SEPARATOR ', ') as clientes_nombres,
-                GROUP_CONCAT(DISTINCT s.nombre_completo SEPARATOR ', ') as supervisores_nombres
+                GROUP_CONCAT(DISTINCT s.nombre_completo SEPARATOR ', ') as supervisores_nombres,
+                GROUP_CONCAT(DISTINCT c.nombre_empresa SEPARATOR ', ') as clientes_nombres
                 FROM usuarios u 
                 JOIN roles r ON u.role_id = r.id 
-                LEFT JOIN usuario_clientes uc ON u.id = uc.usuario_id
-                LEFT JOIN clientes c ON uc.cliente_id = c.id
                 LEFT JOIN supervisor_promotores sp ON u.id = sp.promotor_id
-                LEFT JOIN usuarios s ON sp.supervisor_id = s.id
-                WHERE 1=1";
+                LEFT JOIN usuarios s ON sp.supervisor_id = s.id AND s.deleted = 0
+                LEFT JOIN usuario_clientes uc ON u.id = uc.usuario_id
+                LEFT JOIN clientes c ON uc.cliente_id = c.id AND c.activo = 1
+                WHERE u.deleted = 0";
 
         $params = [];
 
@@ -101,7 +101,7 @@ class User
             SELECT u.*, r.nombre as role_name 
             FROM usuarios u 
             JOIN roles r ON u.role_id = r.id 
-            WHERE u.id = ?
+            WHERE u.id = ? AND u.deleted = 0
         ");
         $stmt->execute([$id]);
         return $stmt->fetch();
@@ -169,8 +169,38 @@ class User
 
     public function delete($id)
     {
-        $stmt = $this->db->prepare("DELETE FROM usuarios WHERE id = ?");
+        $stmt = $this->db->prepare("UPDATE usuarios SET deleted = 1 WHERE id = ?");
         return $stmt->execute([$id]);
+    }
+
+    public function restore($id)
+    {
+        $stmt = $this->db->prepare("UPDATE usuarios SET deleted = 0 WHERE id = ?");
+        return $stmt->execute([$id]);
+    }
+
+    public function getAllDeleted($filters = [])
+    {
+        $sql = "SELECT u.*, r.nombre as role_name,
+                GROUP_CONCAT(DISTINCT s.nombre_completo SEPARATOR ', ') as supervisores_nombres
+                FROM usuarios u 
+                JOIN roles r ON u.role_id = r.id 
+                LEFT JOIN supervisor_promotores sp ON u.id = sp.promotor_id
+                LEFT JOIN usuarios s ON sp.supervisor_id = s.id AND s.deleted = 0
+                WHERE u.deleted = 1";
+
+        $params = [];
+
+        if (!empty($filters['role_id'])) {
+            $sql .= " AND u.role_id = ?";
+            $params[] = $filters['role_id'];
+        }
+
+        $sql .= " GROUP BY u.id ORDER BY u.nombre_completo";
+
+        $stmt = $this->db->prepare($sql);
+        $stmt->execute($params);
+        return $stmt->fetchAll();
     }
 
     public function updateLastAccess($userId)
@@ -187,7 +217,7 @@ class User
         $stmt = $this->db->prepare("
             UPDATE usuarios 
             SET reset_token = ?, token_expires = ? 
-            WHERE email = ?
+            WHERE email = ? AND deleted = 0
         ");
 
         if ($stmt->execute([$token, $expires, $email])) {
@@ -201,7 +231,7 @@ class User
     {
         $stmt = $this->db->prepare("
             SELECT id FROM usuarios 
-            WHERE reset_token = ? AND token_expires > NOW()
+            WHERE reset_token = ? AND token_expires > NOW() AND deleted = 0
         ");
         $stmt->execute([$token]);
         return $stmt->fetch();
@@ -226,7 +256,7 @@ class User
             SELECT u.*, r.nombre as role_name 
             FROM usuarios u 
             JOIN roles r ON u.role_id = r.id 
-            WHERE r.nombre = 'Promotor' AND u.estado = 'activo'
+            WHERE r.nombre = 'Promotor' AND u.estado = 'activo' AND u.deleted = 0
             ORDER BY u.nombre_completo
         ");
         $stmt->execute();
@@ -239,7 +269,7 @@ class User
             SELECT u.*, r.nombre as role_name 
             FROM usuarios u 
             JOIN roles r ON u.role_id = r.id 
-            WHERE r.nombre = 'Supervisor' AND u.estado = 'activo'
+            WHERE r.nombre = 'Supervisor' AND u.estado = 'activo' AND u.deleted = 0
             ORDER BY u.nombre_completo
         ");
         $stmt->execute();
@@ -249,14 +279,16 @@ class User
     public function getPromotoresBySupervisor($supervisorId, $limit = null, $offset = null, $filtroNombre = '', $filtroEstado = '')
     {
         $sql = "SELECT u.*, r.nombre as role_name,
+                   GROUP_CONCAT(DISTINCT s.nombre_completo SEPARATOR ', ') as supervisores_nombres,
                    GROUP_CONCAT(DISTINCT c.nombre_empresa ORDER BY c.nombre_empresa SEPARATOR ', ') as clientes_nombres
             FROM usuarios u 
             JOIN roles r ON u.role_id = r.id 
             LEFT JOIN supervisor_promotores sp ON u.id = sp.promotor_id
+            LEFT JOIN usuarios s ON sp.supervisor_id = s.id AND s.deleted = 0
             LEFT JOIN proyecto_promotores pp ON u.id = pp.promotor_user_id
             LEFT JOIN proyecto_clientes pc ON pp.proyecto_id = pc.proyecto_id
             LEFT JOIN clientes c ON pc.cliente_id = c.id
-            WHERE sp.supervisor_id = ?";
+            WHERE sp.supervisor_id = ? AND u.deleted = 0";
 
         $params = [$supervisorId];
 
@@ -296,15 +328,12 @@ class User
     {
         $stmt = $this->db->prepare("
             SELECT u.*, r.nombre as role_name,
-                   GROUP_CONCAT(DISTINCT s.nombre_completo SEPARATOR ', ') as supervisores_nombres,
-                   GROUP_CONCAT(DISTINCT c.nombre_empresa SEPARATOR ', ') as clientes_nombres
+                   GROUP_CONCAT(DISTINCT s.nombre_completo SEPARATOR ', ') as supervisores_nombres
             FROM usuarios u 
             JOIN roles r ON u.role_id = r.id 
             LEFT JOIN supervisor_promotores sp ON u.id = sp.promotor_id
-            LEFT JOIN usuarios s ON sp.supervisor_id = s.id
-            LEFT JOIN usuario_clientes uc ON u.id = uc.usuario_id
-            LEFT JOIN clientes c ON uc.cliente_id = c.id
-            WHERE r.nombre = 'Promotor' AND u.estado = 'activo'
+            LEFT JOIN usuarios s ON sp.supervisor_id = s.id AND s.deleted = 0
+            WHERE r.nombre = 'Promotor' AND u.estado = 'activo' AND u.deleted = 0
             GROUP BY u.id
             ORDER BY u.nombre_completo
         ");
@@ -314,7 +343,7 @@ class User
 
     public function emailExists($email, $excludeId = null)
     {
-        $sql = "SELECT id FROM usuarios WHERE email = ?";
+        $sql = "SELECT id FROM usuarios WHERE email = ? AND deleted = 0";
         $params = [$email];
 
         if ($excludeId) {
@@ -333,7 +362,7 @@ class User
             return false;
         }
 
-        $sql = "SELECT id FROM usuarios WHERE telefono = ?";
+        $sql = "SELECT id FROM usuarios WHERE telefono = ? AND deleted = 0";
         $params = [$telefono];
 
         if ($excludeId) {

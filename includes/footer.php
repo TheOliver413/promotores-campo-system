@@ -38,8 +38,8 @@
                 <h5>Contacto</h5>
                 <ul>
                     <li><i class="bi bi-envelope me-2"></i> soporte@fieldsales.com</li>
-                    <li><i class="bi bi-telephone me-2"></i> +52 (55) 1234-5678</li>
-                    <li><i class="bi bi-geo-alt me-2"></i> Ciudad de México, México</li>
+                    <li><i class="bi bi-telephone me-2"></i> +57 (310) 3738600</li>
+                    <li><i class="bi bi-geo-alt me-2"></i> Bogotá, Colombia</li>
                     <li><i class="bi bi-clock me-2"></i> Lun - Vie: 9:00 - 18:00</li>
                 </ul>
             </div>

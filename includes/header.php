@@ -285,6 +285,11 @@ require_once __DIR__ . '/../config/session.php';
                                 </a>
                             </li>
                             <li class="nav-item">
+                                <a class="nav-link <?php echo $currentPage === 'clientes.php' ? 'active' : ''; ?>" href="/promotores-campo-system/admin/clientes.php">
+                                    <i class="bi bi-building me-1"></i> Clientes
+                                </a>
+                            </li>
+                            <li class="nav-item">
                                 <a class="nav-link <?php echo $currentPage === 'usuarios.php' ? 'active' : ''; ?>" href="/promotores-campo-system/admin/usuarios.php">
                                     <i class="bi bi-people me-1"></i> Usuarios
                                 </a>
@@ -295,8 +300,8 @@ require_once __DIR__ . '/../config/session.php';
                                 </a>
                             </li>
                             <li class="nav-item">
-                                <a class="nav-link <?php echo $currentPage === 'clientes.php' ? 'active' : ''; ?>" href="/promotores-campo-system/admin/clientes.php">
-                                    <i class="bi bi-building me-1"></i> Clientes
+                                <a class="nav-link <?php echo $currentPage === 'auditoria.php' ? 'active' : ''; ?>" href="/promotores-campo-system/admin/auditoria.php">
+                                    <i class="bi bi-file-text me-1"></i> Auditoría
                                 </a>
                             </li>
                             <!-- <li class="nav-item dropdown">
@@ -308,12 +313,6 @@ require_once __DIR__ . '/../config/session.php';
                                     <li><a class="dropdown-item" href="/promotores-campo-system/admin/catalogos.php"><i class="bi bi-list-check me-2"></i> Tipos de Actividad</a></li>
                                 </ul>
                             </li> -->
-                            <li class="nav-item">
-                                <a class="nav-link <?php echo $currentPage === 'auditoria.php' ? 'active' : ''; ?>" href="/promotores-campo-system/admin/auditoria.php">
-                                    <i class="bi bi-file-text me-1"></i> Auditoría
-                                </a>
-                            </li>
-
                         <?php elseif ($roleName === 'Supervisor'): ?>
                             <li class="nav-item">
                                 <a class="nav-link <?php echo $currentPage === 'dashboard.php' ? 'active' : ''; ?>" href="/promotores-campo-system/supervisor/dashboard.php">
@@ -326,8 +325,8 @@ require_once __DIR__ . '/../config/session.php';
                                 </a>
                             </li>
                             <li class="nav-item">
-                                <a class="nav-link <?php echo $currentPage === 'monitoreo.php' ? 'active' : ''; ?>" href="/promotores-campo-system/supervisor/monitoreo.php">
-                                    <i class="bi bi-binoculars me-1"></i> Monitoreo
+                                <a class="nav-link <?php echo $currentPage === 'ubicaciones.php' ? 'active' : ''; ?>" href="/promotores-campo-system/supervisor/ubicaciones.php">
+                                    <i class="bi bi-geo-alt me-1"></i> Ubicaciones
                                 </a>
                             </li>
                             <li class="nav-item">
@@ -336,8 +335,8 @@ require_once __DIR__ . '/../config/session.php';
                                 </a>
                             </li>
                             <li class="nav-item">
-                                <a class="nav-link <?php echo $currentPage === 'ubicaciones.php' ? 'active' : ''; ?>" href="/promotores-campo-system/supervisor/ubicaciones.php">
-                                    <i class="bi bi-geo-alt me-1"></i> Ubicaciones
+                                <a class="nav-link <?php echo $currentPage === 'monitoreo.php' ? 'active' : ''; ?>" href="/promotores-campo-system/supervisor/monitoreo.php">
+                                    <i class="bi bi-binoculars me-1"></i> Monitoreo
                                 </a>
                             </li>
                             <li class="nav-item">
@@ -386,11 +385,11 @@ require_once __DIR__ . '/../config/session.php';
                             </li>
 
                         <?php elseif ($roleName === 'Cliente'): ?>
-                            <li class="nav-item">
+                            <!-- <li class="nav-item">
                                 <a class="nav-link <?php echo $currentPage === 'dashboard.php' ? 'active' : ''; ?>" href="/promotores-campo-system/cliente/dashboard.php">
                                     <i class="bi bi-speedometer2 me-1"></i> Dashboard
                                 </a>
-                            </li>
+                            </li> -->
                             <li class="nav-item">
                                 <a class="nav-link <?php echo $currentPage === 'reportes.php' ? 'active' : ''; ?>" href="/promotores-campo-system/cliente/reportes.php">
                                     <i class="bi bi-graph-up me-1"></i> Reportes

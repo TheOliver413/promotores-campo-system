@@ -231,14 +231,6 @@ include 'includes/header.php';
                                     <input type="tel" class="form-control form-control-lg" name="telefono"
                                         value="<?= htmlspecialchars($usuario['telefono'] ?? '') ?>">
                                 </div>
-                                <div class="mb-3">
-                                    <label class="form-label fw-bold">
-                                        <i class="bi bi-person-badge me-1"></i> Usuario
-                                    </label>
-                                    <input type="text" class="form-control form-control-lg"
-                                        value="<?= htmlspecialchars($usuario['username']) ?>" disabled>
-                                    <small class="text-muted">El nombre de usuario no se puede cambiar</small>
-                                </div>
                                 <div class="d-grid">
                                     <button type="submit" name="actualizar_perfil" class="btn btn-primary btn-lg">
                                         <i class="bi bi-check-circle me-2"></i> Guardar Cambios

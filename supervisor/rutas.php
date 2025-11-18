@@ -356,6 +356,8 @@ include '../includes/header.php';
     let currentPage = 1;
     let totalPages = 1;
     let editingPointIndex = null;
+    let isLoading = false;
+    let loadingButtons = new Set();
 
     document.addEventListener('DOMContentLoaded', () => {
         // Mapa principal
@@ -370,6 +372,13 @@ include '../includes/header.php';
     });
 
     async function cargarRutas(page = 1) {
+        if (isLoading) {
+            console.log('[v0] Ya se está cargando, esperando...');
+            return;
+        }
+
+        isLoading = true;
+
         try {
             const filtroPromotor = document.getElementById('filtroPromotor')?.value || '';
             const filtroEstado = document.getElementById('filtroEstado')?.value || '';
@@ -451,6 +460,8 @@ include '../includes/header.php';
         } catch (error) {
             console.error('[v0] Error al cargar rutas:', error);
             document.getElementById('rutasBody').innerHTML = '<tr><td colspan="6" class="text-center text-danger">Error al cargar rutas</td></tr>';
+        } finally {
+            isLoading = false;
         }
     }
 
@@ -502,6 +513,18 @@ include '../includes/header.php';
     }
 
     async function verRutaEnMapa(rutaId) {
+        const button = event?.target?.closest('button');
+        if (button && loadingButtons.has(button)) {
+            console.log('[v0] Botón ya está procesando');
+            return;
+        }
+
+        if (button) {
+            button.disabled = true;
+            loadingButtons.add(button);
+            button.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span><i class="bi bi-map"></i>';
+        }
+
         try {
             const response = await fetch(`../api/ruta_crud.php?action=get&id=${rutaId}`);
             const result = await response.json();
@@ -601,6 +624,12 @@ include '../includes/header.php';
         } catch (error) {
             console.error('[v0] Error al cargar ruta:', error);
             alert('Error al cargar la ruta');
+        } finally {
+            if (button) {
+                button.disabled = false;
+                loadingButtons.delete(button);
+                button.innerHTML = '<i class="bi bi-map"></i>';
+            }
         }
     }
 
@@ -832,8 +861,20 @@ include '../includes/header.php';
     document.getElementById('formRuta').addEventListener('submit', async (e) => {
         e.preventDefault();
 
+        const submitBtn = e.target.querySelector('button[type="submit"]');
+        if (submitBtn.disabled) {
+            console.log('[v0] Formulario ya se está enviando');
+            return;
+        }
+
+        submitBtn.disabled = true;
+        const originalText = submitBtn.innerHTML;
+        submitBtn.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span>Guardando...';
+
         if (puntosRuta.length === 0) {
             alert('Debe agregar al menos un punto a la ruta');
+            submitBtn.disabled = false;
+            submitBtn.innerHTML = originalText;
             return;
         }
 
@@ -858,11 +899,25 @@ include '../includes/header.php';
         } catch (error) {
             console.error('[v0] Error al guardar ruta:', error);
             alert('Error al guardar ruta');
+        } finally {
+            submitBtn.disabled = false;
+            submitBtn.innerHTML = originalText;
         }
     });
 
-    // Editar ruta
-    async function editarRuta(rutaId) { // Renamed parameter to match internal logic
+    async function editarRuta(rutaId) {
+        const button = event?.target?.closest('button');
+        if (button && loadingButtons.has(button)) {
+            console.log('[v0] Botón ya está procesando');
+            return;
+        }
+
+        if (button) {
+            button.disabled = true;
+            loadingButtons.add(button);
+            button.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span><i class="bi bi-pencil"></i>';
+        }
+
         try {
             const response = await fetch(`../api/ruta_crud.php?action=get&id=${rutaId}`);
             const result = await response.json();
@@ -954,12 +1009,30 @@ include '../includes/header.php';
         } catch (error) {
             console.error('[v0] Error al cargar ruta para editar:', error);
             alert('Error al cargar la ruta');
+        } finally {
+            if (button) {
+                button.disabled = false;
+                loadingButtons.delete(button);
+                button.innerHTML = '<i class="bi bi-pencil"></i>';
+            }
         }
     }
 
     // Eliminar ruta
     async function eliminarRuta(id) {
         if (!confirm('¿Está seguro de eliminar esta ruta?')) return;
+
+        const button = event?.target?.closest('button');
+        if (button && loadingButtons.has(button)) {
+            console.log('[v0] Botón ya está procesando');
+            return;
+        }
+
+        if (button) {
+            button.disabled = true;
+            loadingButtons.add(button);
+            button.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span><i class="bi bi-trash"></i>';
+        }
 
         try {
             const response = await fetch(`../api/ruta_crud.php?action=delete&id=${id}`, {
@@ -976,6 +1049,12 @@ include '../includes/header.php';
         } catch (error) {
             console.error('[v0] Error al eliminar ruta:', error);
             alert('Error al eliminar ruta');
+        } finally {
+            if (button) {
+                button.disabled = false;
+                loadingButtons.delete(button);
+                button.innerHTML = '<i class="bi bi-trash"></i>';
+            }
         }
     }
 
@@ -1293,6 +1372,18 @@ include '../includes/header.php';
     }
 
     async function guardarPuntoManual() {
+        const button = event?.target;
+        if (button && button.disabled) {
+            console.log('[v0] Guardado ya en proceso');
+            return;
+        }
+
+        if (button) {
+            button.disabled = true;
+            const originalText = button.innerHTML;
+            button.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span>Guardando...';
+        }
+
         const nombre = document.getElementById('punto_nombre').value.trim();
         const direccion = document.getElementById('punto_direccion').value.trim();
         const latitud = parseFloat(document.getElementById('punto_latitud').value);
@@ -1303,92 +1394,111 @@ include '../includes/header.php';
 
         if (!nombre || !direccion || isNaN(latitud) || isNaN(longitud)) {
             alert('Por favor complete todos los campos obligatorios y asegúrese de que las coordenadas sean válidas');
+            if (button) {
+                button.disabled = false;
+                button.innerHTML = originalText;
+            }
             return;
         }
 
         if (latitud < -90 || latitud > 90 || longitud < -180 || longitud > 180) {
             alert('Las coordenadas no son válidas. Latitud debe estar entre -90 y 90, Longitud entre -180 y 180');
+            if (button) {
+                button.disabled = false;
+                button.innerHTML = originalText;
+            }
             return;
         }
 
-        const punto = {
-            nombre: nombre,
-            direccion: direccion,
-            latitud: latitud,
-            longitud: longitud,
-            tiempo_estimado_minutos: tiempo || 30,
-            notas: notas
-        };
-
-        if (editingPointIndex !== null && editingPointIndex >= 0 && editingPointIndex < puntosRuta.length) {
-            // Update existing point
-            puntosRuta[editingPointIndex] = {
-                ...puntosRuta[editingPointIndex],
-                ...punto
+        try {
+            const punto = {
+                nombre: nombre,
+                direccion: direccion,
+                latitud: latitud,
+                longitud: longitud,
+                tiempo_estimado_minutos: tiempo || 30,
+                notas: notas
             };
-            editingPointIndex = null;
-        } else {
-            // Add new point
-            puntosRuta.push(punto);
-        }
 
-        if (guardarComoUbicacion) {
-            const proyectoId = document.getElementById('proyecto_id').value;
-            if (!proyectoId) {
-                alert('Por favor seleccione un proyecto primero');
-                return;
+            if (editingPointIndex !== null && editingPointIndex >= 0 && editingPointIndex < puntosRuta.length) {
+                // Update existing point
+                puntosRuta[editingPointIndex] = {
+                    ...puntosRuta[editingPointIndex],
+                    ...punto
+                };
+                editingPointIndex = null;
+            } else {
+                // Add new point
+                puntosRuta.push(punto);
             }
 
-            try {
-                // Obtener el cliente_id desde proyecto_clientes
-                const proyectoClienteResponse = await fetch(`../api/ruta_crud.php?action=get_cliente_from_proyecto&proyecto_id=${proyectoId}`);
-                const proyectoClienteResult = await proyectoClienteResponse.json();
-
-                console.log('[v0] Respuesta get_cliente_from_proyecto:', proyectoClienteResult);
-
-                if (proyectoClienteResult.success && proyectoClienteResult.data && proyectoClienteResult.data.cliente_id) {
-                    const response = await fetch('../api/ubicacion_reutilizable_crud.php', {
-                        method: 'POST',
-                        headers: {
-                            'Content-Type': 'application/json'
-                        },
-                        body: JSON.stringify({
-                            action: 'create',
-                            cliente_id: proyectoClienteResult.data.cliente_id,
-                            nombre_ubicacion: nombre,
-                            direccion: direccion,
-                            latitud: latitud,
-                            longitud: longitud,
-                            notas: notas
-                        })
-                    });
-
-                    const result = await response.json();
-                    console.log('[v0] Respuesta de guardar ubicación:', result);
-
-                    if (result.success) {
-                        console.log('[v0] Ubicación guardada como reutilizable con ID:', result.data?.id);
-                        // Reload available locations
-                        await cargarUbicacionesDisponibles();
-                        alert('Ubicación guardada exitosamente y estará disponible para futuras rutas');
-                    } else {
-                        console.warn('[v0] No se pudo guardar como ubicación reutilizable:', result.message);
-                        alert('Advertencia: No se pudo guardar como ubicación reutilizable. ' + result.message);
+            if (guardarComoUbicacion) {
+                const proyectoId = document.getElementById('proyecto_id').value;
+                if (!proyectoId) {
+                    alert('Por favor seleccione un proyecto primero');
+                    if (button) {
+                        button.disabled = false;
+                        button.innerHTML = originalText;
                     }
-                } else {
-                    console.warn('[v0] No se pudo obtener el cliente_id del proyecto');
-                    alert('Advertencia: No se pudo guardar como ubicación reutilizable porque no se encontró el cliente asociado al proyecto.');
+                    return;
                 }
-            } catch (error) {
-                console.error('[v0] Error al guardar ubicación reutilizable:', error);
-                alert('Error al guardar ubicación reutilizable: ' + error.message);
+
+                try {
+                    // Obtener el cliente_id desde proyecto_clientes
+                    const proyectoClienteResponse = await fetch(`../api/ruta_crud.php?action=get_cliente_from_proyecto&proyecto_id=${proyectoId}`);
+                    const proyectoClienteResult = await proyectoClienteResponse.json();
+
+                    console.log('[v0] Respuesta get_cliente_from_proyecto:', proyectoClienteResult);
+
+                    if (proyectoClienteResult.success && proyectoClienteResult.data && proyectoClienteResult.data.cliente_id) {
+                        const response = await fetch('../api/ubicacion_reutilizable_crud.php', {
+                            method: 'POST',
+                            headers: {
+                                'Content-Type': 'application/json'
+                            },
+                            body: JSON.stringify({
+                                action: 'create',
+                                cliente_id: proyectoClienteResult.data.cliente_id,
+                                nombre_ubicacion: nombre,
+                                direccion: direccion,
+                                latitud: latitud,
+                                longitud: longitud,
+                                notas: notas
+                            })
+                        });
+
+                        const result = await response.json();
+                        console.log('[v0] Respuesta de guardar ubicación:', result);
+
+                        if (result.success) {
+                            console.log('[v0] Ubicación guardada como reutilizable con ID:', result.data?.id);
+                            // Reload available locations
+                            await cargarUbicacionesDisponibles();
+                            alert('Ubicación guardada exitosamente y estará disponible para futuras rutas');
+                        } else {
+                            console.warn('[v0] No se pudo guardar como ubicación reutilizable:', result.message);
+                            alert('Advertencia: No se pudo guardar como ubicación reutilizable. ' + result.message);
+                        }
+                    } else {
+                        console.warn('[v0] No se pudo obtener el cliente_id del proyecto');
+                        alert('Advertencia: No se pudo guardar como ubicación reutilizable porque no se encontró el cliente asociado al proyecto.');
+                    }
+                } catch (error) {
+                    console.error('[v0] Error al guardar ubicación reutilizable:', error);
+                    alert('Error al guardar ubicación reutilizable: ' + error.message);
+                }
+            }
+
+            actualizarListaPuntos();
+            actualizarMapaPreview();
+
+            bootstrap.Modal.getInstance(document.getElementById('modalPuntoManual')).hide();
+        } finally {
+            if (button) {
+                button.disabled = false;
+                button.innerHTML = originalText;
             }
         }
-
-        actualizarListaPuntos();
-        actualizarMapaPreview();
-
-        bootstrap.Modal.getInstance(document.getElementById('modalPuntoManual')).hide();
     }
 </script>
 

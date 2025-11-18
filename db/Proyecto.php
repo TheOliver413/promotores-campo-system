@@ -143,4 +143,15 @@ class Proyecto
         $stmt->execute([$promotorId]);
         return $stmt->fetchAll();
     }
+
+    public function getByCliente($clienteId)
+    {
+        $stmt = $this->db->prepare("
+            SELECT p.* FROM proyectos p 
+            JOIN proyecto_clientes pc ON p.id = pc.proyecto_id 
+            WHERE pc.cliente_id = ?
+        ");
+        $stmt->execute([$clienteId]);
+        return $stmt->fetchAll();
+    }
 }

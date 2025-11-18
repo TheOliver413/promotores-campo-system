@@ -13,8 +13,6 @@ class UsuarioCliente
     public function asignarClientes($usuarioId, $clienteIds)
     {
         try {
-            $this->db->beginTransaction();
-
             // Delete previous assignments
             $stmt = $this->db->prepare("DELETE FROM usuario_clientes WHERE usuario_id = ?");
             $stmt->execute([$usuarioId]);
@@ -29,12 +27,10 @@ class UsuarioCliente
                 }
             }
 
-            $this->db->commit();
             return true;
         } catch (Exception $e) {
-            $this->db->rollBack();
             error_log("Error asignando clientes: " . $e->getMessage());
-            return false;
+            throw $e; // Importante: que suba la excepción para que el catch externo haga rollback
         }
     }
 

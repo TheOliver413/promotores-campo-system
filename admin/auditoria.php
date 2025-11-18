@@ -15,6 +15,10 @@ $filtroTabla = $_GET['tabla'] ?? '';
 $filtroFechaInicio = $_GET['fecha_inicio'] ?? '';
 $filtroFechaFin = $_GET['fecha_fin'] ?? '';
 
+$page = isset($_GET['page']) ? (int)$_GET['page'] : 1;
+$perPage = 50;
+$offset = ($page - 1) * $perPage;
+
 // Build query
 $db = Database::getInstance()->getConnection();
 $sql = "SELECT a.*, u.nombre_completo as usuario_nombre 
@@ -48,7 +52,15 @@ if ($filtroFechaFin) {
     $params[] = $filtroFechaFin;
 }
 
-$sql .= " ORDER BY a.timestamp_accion DESC LIMIT 500";
+$countSql = "SELECT COUNT(*) as total FROM (" . $sql . ") as count_table";
+$countStmt = $db->prepare($countSql);
+$countStmt->execute($params);
+$totalRecords = $countStmt->fetch()['total'];
+$totalPages = ceil($totalRecords / $perPage);
+
+$sql .= " ORDER BY a.timestamp_accion DESC LIMIT ? OFFSET ?";
+$params[] = $perPage;
+$params[] = $offset;
 
 $stmt = $db->prepare($sql);
 $stmt->execute($params);
@@ -123,7 +135,8 @@ $tablas = $tablasStmt->fetchAll();
     <!-- Results -->
     <div class="card">
         <div class="card-header">
-            <h5 class="mb-0">Registros de Auditoría (<?php echo count($registros); ?>)</h5>
+            <!-- Updated header to show pagination info -->
+            <h5 class="mb-0">Registros de Auditoría (<?php echo $totalRecords; ?> total, mostrando página <?php echo $page; ?> de <?php echo $totalPages; ?>)</h5>
         </div>
         <div class="card-body">
             <div class="table-responsive">
@@ -173,6 +186,45 @@ $tablas = $tablasStmt->fetchAll();
                     </tbody>
                 </table>
             </div>
+
+            <!-- Added pagination controls -->
+            <?php if ($totalPages > 1): ?>
+                <nav aria-label="Page navigation" class="mt-3">
+                    <ul class="pagination justify-content-center">
+                        <?php if ($page > 1): ?>
+                            <li class="page-item">
+                                <a class="page-link" href="?page=<?php echo $page - 1; ?>&usuario=<?php echo urlencode($filtroUsuario); ?>&accion=<?php echo urlencode($filtroAccion); ?>&tabla=<?php echo urlencode($filtroTabla); ?>&fecha_inicio=<?php echo urlencode($filtroFechaInicio); ?>&fecha_fin=<?php echo urlencode($filtroFechaFin); ?>">Anterior</a>
+                            </li>
+                        <?php endif; ?>
+
+                        <?php
+                        // Show page numbers with ellipsis
+                        $range = 2;
+                        for ($i = 1; $i <= $totalPages; $i++) {
+                            if ($i == 1 || $i == $totalPages || ($i >= $page - $range && $i <= $page + $range)) {
+                        ?>
+                                <li class="page-item <?php echo $i == $page ? 'active' : ''; ?>">
+                                    <a class="page-link" href="?page=<?php echo $i; ?>&usuario=<?php echo urlencode($filtroUsuario); ?>&accion=<?php echo urlencode($filtroAccion); ?>&tabla=<?php echo urlencode($filtroTabla); ?>&fecha_inicio=<?php echo urlencode($filtroFechaInicio); ?>&fecha_fin=<?php echo urlencode($filtroFechaFin); ?>"><?php echo $i; ?></a>
+                                </li>
+                            <?php
+                            } elseif ($i == $page - $range - 1 || $i == $page + $range + 1) {
+                            ?>
+                                <li class="page-item disabled">
+                                    <span class="page-link">...</span>
+                                </li>
+                        <?php
+                            }
+                        }
+                        ?>
+
+                        <?php if ($page < $totalPages): ?>
+                            <li class="page-item">
+                                <a class="page-link" href="?page=<?php echo $page + 1; ?>&usuario=<?php echo urlencode($filtroUsuario); ?>&accion=<?php echo urlencode($filtroAccion); ?>&tabla=<?php echo urlencode($filtroTabla); ?>&fecha_inicio=<?php echo urlencode($filtroFechaInicio); ?>&fecha_fin=<?php echo urlencode($filtroFechaFin); ?>">Siguiente</a>
+                            </li>
+                        <?php endif; ?>
+                    </ul>
+                </nav>
+            <?php endif; ?>
         </div>
     </div>
 </div>

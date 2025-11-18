@@ -1,6 +1,7 @@
 <?php
 require_once __DIR__ . '/../config/database.php';
 require_once __DIR__ . '/../config/session.php';
+require_once __DIR__ . '/../db/Proyecto.php';
 
 header('Content-Type: application/json');
 
@@ -10,6 +11,27 @@ if (!isLoggedIn()) {
     exit();
 }
 
+$action = $_GET['action'] ?? 'get_assignments';
+
+if ($action === 'list') {
+    // Return all projects
+    $proyecto = new Proyecto();
+    $proyectos = $proyecto->getAll();
+
+    // Format the response to include only necessary fields
+    $result = array_map(function ($p) {
+        return [
+            'proyecto_id' => $p['id'],
+            'nombre_proyecto' => $p['nombre_proyecto'],
+            'estado' => $p['estado']
+        ];
+    }, $proyectos);
+
+    echo json_encode($result);
+    exit();
+}
+
+// Original functionality for getting assignments
 $proyectoId = $_GET['proyecto_id'] ?? null;
 
 if (!$proyectoId) {

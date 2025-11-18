@@ -17,10 +17,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $action = $_POST['action'] ?? '';
 
     if ($action === 'create') {
+        $transactionStarted = false;
         $db = Database::getInstance()->getConnection();
-        $db->beginTransaction();
 
         try {
+            $db->beginTransaction();
+            $transactionStarted = true;
+
             $clienteId = $clienteModel->create([
                 'nombre_empresa' => $_POST['nombre_empresa'],
                 'contacto_email' => $_POST['contacto_email'],
@@ -50,19 +53,58 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $auditoriaModel->registrar(getUserId(), 'CREATE', 'clientes', $clienteId);
             $_SESSION['success'] = 'Cliente creado exitosamente';
         } catch (Exception $e) {
-            $db->rollBack();
+            if ($transactionStarted && $db->inTransaction()) {
+                $db->rollBack();
+            }
             $_SESSION['error'] = 'Error al crear cliente: ' . $e->getMessage();
         }
     } elseif ($action === 'update') {
         $clienteId = $_POST['cliente_id'];
-        if ($clienteModel->update($clienteId, [
-            'nombre_empresa' => $_POST['nombre_empresa'],
-            'contacto_email' => $_POST['contacto_email'],
-            'telefono' => $_POST['telefono'] ?? null,
-            'activo' => isset($_POST['activo'])
-        ])) {
-            $auditoriaModel->registrar(getUserId(), 'UPDATE', 'clientes', $clienteId);
-            $_SESSION['success'] = 'Cliente actualizado exitosamente';
+        $transactionStarted = false;
+        $db = Database::getInstance()->getConnection();
+
+        try {
+            $db->beginTransaction();
+            $transactionStarted = true;
+
+            // Get current client data
+            $cliente = $clienteModel->getById($clienteId);
+
+            // Update cliente table
+            if ($clienteModel->update($clienteId, [
+                'nombre_empresa' => $_POST['nombre_empresa'],
+                'contacto_email' => $_POST['contacto_email'],
+                'telefono' => $_POST['telefono'] ?? null,
+                'activo' => isset($_POST['activo'])
+            ])) {
+                // Get all users associated with this client via usuario_clientes table
+                $stmt = $db->prepare("
+                    SELECT DISTINCT u.id 
+                    FROM usuarios u
+                    INNER JOIN usuario_clientes uc ON u.id = uc.usuario_id
+                    INNER JOIN roles r ON u.role_id = r.id
+                    WHERE uc.cliente_id = ? AND r.nombre = 'Cliente'
+                ");
+                $stmt->execute([$clienteId]);
+                $users = $stmt->fetchAll();
+
+                // Update each user's information
+                foreach ($users as $user) {
+                    $userModel->update($user['id'], [
+                        'email' => $_POST['contacto_email'],
+                        'telefono' => $_POST['telefono'] ?? null
+                    ]);
+                }
+
+                $db->commit();
+                $auditoriaModel->registrar(getUserId(), 'UPDATE', 'clientes', $clienteId);
+                $_SESSION['success'] = 'Cliente actualizado exitosamente';
+            }
+        } catch (Exception $e) {
+            if ($transactionStarted && $db->inTransaction()) {
+                $db->rollBack();
+            }
+            $_SESSION['error'] = 'Error al actualizar cliente: ' . $e->getMessage();
         }
     } elseif ($action === 'toggle') {
         $clienteId = $_POST['cliente_id'];
@@ -81,16 +123,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 'activo' => $newStatus
             ]);
 
-            // Also update associated users status
             $stmt = $db->prepare("
                 UPDATE usuarios u
+                INNER JOIN usuario_clientes uc ON u.id = uc.usuario_id
                 INNER JOIN roles r ON u.role_id = r.id
                 SET u.estado = ?
-                WHERE r.nombre = 'Cliente' AND u.email = ?
+                WHERE uc.cliente_id = ? AND r.nombre = 'Cliente'
             ");
             $stmt->execute([
                 $newStatus ? 'activo' : 'inactivo',
-                $cliente['contacto_email']
+                $clienteId
             ]);
 
             $auditoriaModel->registrar(
@@ -106,23 +148,32 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         }
     } elseif ($action === 'delete') {
         $clienteId = $_POST['cliente_id'];
+        $transactionStarted = false;
         $db = Database::getInstance()->getConnection();
-        $db->beginTransaction();
 
         try {
-            // Get client info before deleting
-            $cliente = $clienteModel->getById($clienteId);
+            $db->beginTransaction();
+            $transactionStarted = true;
 
+            // First, get all user IDs associated with this client
+            $stmt = $db->prepare("
+                SELECT DISTINCT u.id 
+                FROM usuarios u
+                INNER JOIN usuario_clientes uc ON u.id = uc.usuario_id
+                INNER JOIN roles r ON u.role_id = r.id
+                WHERE uc.cliente_id = ? AND r.nombre = 'Cliente'
+            ");
+            $stmt->execute([$clienteId]);
+            $users = $stmt->fetchAll();
+
+            // Delete from usuario_clientes junction table
             $stmt = $db->prepare("DELETE FROM usuario_clientes WHERE cliente_id = ?");
             $stmt->execute([$clienteId]);
 
-            // Delete associated users with role "Cliente" that have this client's email
-            $stmt = $db->prepare("
-                DELETE u FROM usuarios u
-                INNER JOIN roles r ON u.role_id = r.id
-                WHERE r.nombre = 'Cliente' AND u.email = ?
-            ");
-            $stmt->execute([$cliente['contacto_email']]);
+            // Mark users as deleted (soft delete)
+            foreach ($users as $user) {
+                $userModel->delete($user['id']);
+            }
 
             // Delete the client
             if ($clienteModel->delete($clienteId)) {
@@ -130,11 +181,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $auditoriaModel->registrar(getUserId(), 'DELETE', 'clientes', $clienteId);
                 $_SESSION['success'] = 'Cliente y usuario asociado eliminados exitosamente';
             } else {
-                $db->rollBack();
+                if ($transactionStarted && $db->inTransaction()) {
+                    $db->rollBack();
+                }
                 $_SESSION['error'] = 'Error al eliminar cliente';
             }
         } catch (Exception $e) {
-            $db->rollBack();
+            if ($transactionStarted && $db->inTransaction()) {
+                $db->rollBack();
+            }
             $_SESSION['error'] = 'Error al eliminar cliente: ' . $e->getMessage();
         }
     }
@@ -178,53 +233,65 @@ $clientes = $clienteModel->getAll();
         </div>
     <?php endif; ?>
 
-    <div class="card">
+    <div class="card border-0 shadow-sm">
         <div class="card-body">
-            <div class="table-responsive">
-                <table class="table table-hover">
-                    <thead>
-                        <tr>
-                            <th>ID</th>
-                            <th>Empresa</th>
-                            <th>Email de Contacto</th>
-                            <th>Teléfono</th>
-                            <th>Estado</th>
-                            <th>Acciones</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        <?php foreach ($clientes as $cliente): ?>
+            <?php if (empty($clientes)): ?>
+                <!-- Added empty state when no clients exist -->
+                <div class="text-center py-5">
+                    <i class="bi bi-building-x" style="font-size: 4rem; color: #dee2e6;"></i>
+                    <h4 class="text-muted mt-3">No hay clientes registrados</h4>
+                    <p class="text-muted mb-4">Crea el primer cliente para comenzar a gestionar tus empresas</p>
+                    <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#clienteModal" onclick="resetForm()">
+                        <i class="bi bi-plus-circle"></i> Crear Primer Cliente
+                    </button>
+                </div>
+            <?php else: ?>
+                <div class="table-responsive">
+                    <table class="table table-hover">
+                        <thead>
                             <tr>
-                                <td><?php echo $cliente['id']; ?></td>
-                                <td><?php echo htmlspecialchars($cliente['nombre_empresa']); ?></td>
-                                <td><?php echo htmlspecialchars($cliente['contacto_email']); ?></td>
-                                <td><?php echo htmlspecialchars($cliente['telefono'] ?? '-'); ?></td>
-                                <td>
-                                    <?php if ($cliente['activo']): ?>
-                                        <span class="badge bg-success">Activo</span>
-                                    <?php else: ?>
-                                        <span class="badge bg-danger">Inactivo</span>
-                                    <?php endif; ?>
-                                </td>
-                                <td>
-                                    <button class="btn btn-sm btn-outline-primary" onclick='editCliente(<?php echo json_encode($cliente); ?>)'>
-                                        <i class="bi bi-pencil"></i>
-                                    </button>
-                                    <!-- Added toggle button to enable/disable client -->
-                                    <button class="btn btn-sm btn-outline-<?php echo $cliente['activo'] ? 'warning' : 'success'; ?>"
-                                        onclick="toggleCliente(<?php echo $cliente['id']; ?>, '<?php echo htmlspecialchars($cliente['nombre_empresa']); ?>', <?php echo $cliente['activo'] ? 'true' : 'false'; ?>)"
-                                        title="<?php echo $cliente['activo'] ? 'Deshabilitar' : 'Habilitar'; ?>">
-                                        <i class="bi bi-<?php echo $cliente['activo'] ? 'toggle-on' : 'toggle-off'; ?>"></i>
-                                    </button>
-                                    <button class="btn btn-sm btn-outline-danger" onclick="deleteCliente(<?php echo $cliente['id']; ?>, '<?php echo htmlspecialchars($cliente['nombre_empresa']); ?>')">
-                                        <i class="bi bi-trash"></i>
-                                    </button>
-                                </td>
+                                <th>ID</th>
+                                <th>Empresa</th>
+                                <th>Email de Contacto</th>
+                                <th>Teléfono</th>
+                                <th>Estado</th>
+                                <th>Acciones</th>
                             </tr>
-                        <?php endforeach; ?>
-                    </tbody>
-                </table>
-            </div>
+                        </thead>
+                        <tbody>
+                            <?php foreach ($clientes as $cliente): ?>
+                                <tr>
+                                    <td><?php echo $cliente['id']; ?></td>
+                                    <td><?php echo htmlspecialchars($cliente['nombre_empresa']); ?></td>
+                                    <td><?php echo htmlspecialchars($cliente['contacto_email']); ?></td>
+                                    <td><?php echo htmlspecialchars($cliente['telefono'] ?? '-'); ?></td>
+                                    <td>
+                                        <?php if ($cliente['activo']): ?>
+                                            <span class="badge bg-success">Activo</span>
+                                        <?php else: ?>
+                                            <span class="badge bg-danger">Inactivo</span>
+                                        <?php endif; ?>
+                                    </td>
+                                    <td>
+                                        <button class="btn btn-sm btn-outline-primary" onclick='editCliente(<?php echo json_encode($cliente); ?>)'>
+                                            <i class="bi bi-pencil"></i>
+                                        </button>
+                                        <!-- Added toggle button to enable/disable client -->
+                                        <button class="btn btn-sm btn-outline-<?php echo $cliente['activo'] ? 'warning' : 'success'; ?>"
+                                            onclick="toggleCliente(<?php echo $cliente['id']; ?>, '<?php echo htmlspecialchars($cliente['nombre_empresa']); ?>', <?php echo $cliente['activo'] ? 'true' : 'false'; ?>)"
+                                            title="<?php echo $cliente['activo'] ? 'Deshabilitar' : 'Habilitar'; ?>">
+                                            <i class="bi bi-<?php echo $cliente['activo'] ? 'toggle-on' : 'toggle-off'; ?>"></i>
+                                        </button>
+                                        <button class="btn btn-sm btn-outline-danger" onclick="deleteCliente(<?php echo $cliente['id']; ?>, '<?php echo htmlspecialchars($cliente['nombre_empresa']); ?>')">
+                                            <i class="bi bi-trash"></i>
+                                        </button>
+                                    </td>
+                                </tr>
+                            <?php endforeach; ?>
+                        </tbody>
+                    </table>
+                </div>
+            <?php endif; ?>
         </div>
     </div>
 </div>

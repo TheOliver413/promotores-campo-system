@@ -212,76 +212,98 @@ $promotores = $promotoresStmt->fetchAll();
         </div>
     <?php endif; ?>
 
-    <div class="row">
-        <?php foreach ($proyectos as $proyecto): ?>
-            <?php
-            $kpis = json_decode($proyecto['kpis'] ?? '{}', true);
-            if (!is_array($kpis)) $kpis = [];
+    <?php if (isset($_SESSION['error'])): ?>
+        <div class="alert alert-danger alert-dismissible fade show">
+            <i class="bi bi-exclamation-triangle-fill"></i> <?php echo $_SESSION['error'];
+                                                            unset($_SESSION['error']); ?>
+            <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+        </div>
+    <?php endif; ?>
 
-            $configuraciones = json_decode($proyecto['configuraciones'] ?? '{}', true);
-            if (!is_array($configuraciones)) $configuraciones = [];
-            ?>
-            <div class="col-md-6 col-lg-4 mb-4">
-                <div class="card h-100">
-                    <div class="card-header bg-primary text-white">
-                        <h5 class="mb-0"><?php echo htmlspecialchars($proyecto['nombre_proyecto']); ?></h5>
-                        <small><?php echo $proyecto['estado'] === 'activo' ? 'Activo' : 'Inactivo'; ?></small>
-                    </div>
-                    <div class="card-body">
-                        <p class="text-muted"><?php echo htmlspecialchars($proyecto['descripcion'] ?? 'Sin descripción'); ?></p>
+    <!-- Added empty state when no projects exist -->
+    <?php if (empty($proyectos)): ?>
+        <div class="card border-0 shadow-sm">
+            <div class="card-body text-center py-5">
+                <i class="bi bi-folder-x" style="font-size: 4rem; color: #dee2e6;"></i>
+                <h4 class="text-muted mt-3">No hay proyectos registrados</h4>
+                <p class="text-muted mb-4">Crea el primer proyecto para comenzar a gestionar tus actividades</p>
+                <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#proyectoModal" onclick="resetForm()">
+                    <i class="bi bi-plus-circle"></i> Crear Primer Proyecto
+                </button>
+            </div>
+        </div>
+    <?php else: ?>
+        <div class="row">
+            <?php foreach ($proyectos as $proyecto): ?>
+                <?php
+                $kpis = json_decode($proyecto['kpis'] ?? '{}', true);
+                if (!is_array($kpis)) $kpis = [];
 
-                        <div class="mb-2">
-                            <small class="text-muted">
-                                <i class="bi bi-calendar"></i>
-                                <?php echo date('d/m/Y', strtotime($proyecto['fecha_inicio'])); ?>
-                                <?php if ($proyecto['fecha_fin']): ?>
-                                    - <?php echo date('d/m/Y', strtotime($proyecto['fecha_fin'])); ?>
-                                <?php endif; ?>
-                            </small>
+                $configuraciones = json_decode($proyecto['configuraciones'] ?? '{}', true);
+                if (!is_array($configuraciones)) $configuraciones = [];
+                ?>
+                <div class="col-md-6 col-lg-4 mb-4">
+                    <div class="card h-100">
+                        <div class="card-header bg-primary text-white">
+                            <h5 class="mb-0"><?php echo htmlspecialchars($proyecto['nombre_proyecto']); ?></h5>
+                            <small><?php echo $proyecto['estado'] === 'activo' ? 'Activo' : 'Inactivo'; ?></small>
                         </div>
+                        <div class="card-body">
+                            <p class="text-muted"><?php echo htmlspecialchars($proyecto['descripcion'] ?? 'Sin descripción'); ?></p>
 
-                        <?php
-                        // Get assigned clients
-                        $stmt = $db->prepare("SELECT c.nombre_empresa FROM clientes c JOIN proyecto_clientes pc ON c.id = pc.cliente_id WHERE pc.proyecto_id = ?");
-                        $stmt->execute([$proyecto['id']]);
-                        $clientesAsignados = $stmt->fetchAll();
-
-                        // Get assigned promoters
-                        $stmt = $db->prepare("SELECT u.nombre_completo FROM usuarios u JOIN proyecto_promotores pp ON u.id = pp.promotor_user_id WHERE pp.proyecto_id = ?");
-                        $stmt->execute([$proyecto['id']]);
-                        $promotoresAsignados = $stmt->fetchAll();
-                        ?>
-
-                        <div class="mt-3">
-                            <h6 class="small">Clientes: <span class="badge bg-info"><?php echo count($clientesAsignados); ?></span></h6>
-                            <h6 class="small">Promotores: <span class="badge bg-success"><?php echo count($promotoresAsignados); ?></span></h6>
-                        </div>
-
-                        <!-- Display KPIs summary -->
-                        <?php if (!empty($kpis) && array_filter($kpis)): ?>
-                            <div class="mt-3 pt-3 border-top">
-                                <h6 class="small text-muted mb-2"><i class="bi bi-graph-up"></i> KPIs Configurados</h6>
-                                <?php if (!empty($kpis['visitas_meta'])): ?>
-                                    <small class="d-block">Meta Visitas: <strong><?php echo $kpis['visitas_meta']; ?></strong></small>
-                                <?php endif; ?>
-                                <?php if (!empty($kpis['cobertura_tiendas_porcentaje'])): ?>
-                                    <small class="d-block">Cobertura: <strong><?php echo $kpis['cobertura_tiendas_porcentaje']; ?>%</strong></small>
-                                <?php endif; ?>
+                            <div class="mb-2">
+                                <small class="text-muted">
+                                    <i class="bi bi-calendar"></i>
+                                    <?php echo date('d/m/Y', strtotime($proyecto['fecha_inicio'])); ?>
+                                    <?php if ($proyecto['fecha_fin']): ?>
+                                        - <?php echo date('d/m/Y', strtotime($proyecto['fecha_fin'])); ?>
+                                    <?php endif; ?>
+                                </small>
                             </div>
-                        <?php endif; ?>
-                    </div>
-                    <div class="card-footer">
-                        <button class="btn btn-sm btn-outline-primary" onclick='editProyecto(<?php echo json_encode($proyecto); ?>)'>
-                            <i class="bi bi-pencil"></i> Editar
-                        </button>
-                        <button class="btn btn-sm btn-outline-danger" onclick="deleteProyecto(<?php echo $proyecto['id']; ?>, '<?php echo htmlspecialchars($proyecto['nombre_proyecto']); ?>')">
-                            <i class="bi bi-trash"></i> Eliminar
-                        </button>
+
+                            <?php
+                            // Get assigned clients
+                            $stmt = $db->prepare("SELECT c.nombre_empresa FROM clientes c JOIN proyecto_clientes pc ON c.id = pc.cliente_id WHERE pc.proyecto_id = ?");
+                            $stmt->execute([$proyecto['id']]);
+                            $clientesAsignados = $stmt->fetchAll();
+
+                            // Get assigned promoters
+                            $stmt = $db->prepare("SELECT u.nombre_completo FROM usuarios u JOIN proyecto_promotores pp ON u.id = pp.promotor_user_id WHERE pp.proyecto_id = ?");
+                            $stmt->execute([$proyecto['id']]);
+                            $promotoresAsignados = $stmt->fetchAll();
+                            ?>
+
+                            <div class="mt-3">
+                                <h6 class="small">Clientes: <span class="badge bg-info"><?php echo count($clientesAsignados); ?></span></h6>
+                                <h6 class="small">Promotores: <span class="badge bg-success"><?php echo count($promotoresAsignados); ?></span></h6>
+                            </div>
+
+                            <!-- Display KPIs summary -->
+                            <?php if (!empty($kpis) && array_filter($kpis)): ?>
+                                <div class="mt-3 pt-3 border-top">
+                                    <h6 class="small text-muted mb-2"><i class="bi bi-graph-up"></i> KPIs Configurados</h6>
+                                    <?php if (!empty($kpis['visitas_meta'])): ?>
+                                        <small class="d-block">Meta Visitas: <strong><?php echo $kpis['visitas_meta']; ?></strong></small>
+                                    <?php endif; ?>
+                                    <?php if (!empty($kpis['cobertura_tiendas_porcentaje'])): ?>
+                                        <small class="d-block">Cobertura: <strong><?php echo $kpis['cobertura_tiendas_porcentaje']; ?>%</strong></small>
+                                    <?php endif; ?>
+                                </div>
+                            <?php endif; ?>
+                        </div>
+                        <div class="card-footer">
+                            <button class="btn btn-sm btn-outline-primary" onclick='editProyecto(<?php echo json_encode($proyecto); ?>)'>
+                                <i class="bi bi-pencil"></i> Editar
+                            </button>
+                            <button class="btn btn-sm btn-outline-danger" onclick="deleteProyecto(<?php echo $proyecto['id']; ?>, '<?php echo htmlspecialchars($proyecto['nombre_proyecto']); ?>')">
+                                <i class="bi bi-trash"></i> Eliminar
+                            </button>
+                        </div>
                     </div>
                 </div>
-            </div>
-        <?php endforeach; ?>
-    </div>
+            <?php endforeach; ?>
+        </div>
+    <?php endif; ?>
 </div>
 
 <!-- Proyecto Modal -->

@@ -28,12 +28,10 @@ try {
             COALESCE(SUM(j.horas_calculadas), 0) as horas,
             j.estado_validacion as estado
         FROM jornadas j
-        INNER JOIN usuarios u ON j.promotor_id = u.id
-        INNER JOIN supervisor_promotores sp ON j.promotor_id = sp.promotor_id
-        LEFT JOIN proyectos_promotores pp ON j.promotor_id = pp.promotor_id
-        LEFT JOIN proyectos p ON pp.proyecto_id = p.id
-        LEFT JOIN actividades a ON j.promotor_id = a.promotor_id 
-            AND DATE(a.fecha_actividad) = DATE(j.check_in_time)
+        INNER JOIN usuarios u ON j.promotor_user_id = u.id
+        INNER JOIN supervisor_promotores sp ON j.promotor_user_id = sp.promotor_id
+        LEFT JOIN proyectos p ON j.proyecto_id = p.id
+        LEFT JOIN actividades a ON a.jornada_id = j.id
         WHERE sp.supervisor_id = ?
         AND MONTH(j.check_in_time) = ?
         AND YEAR(j.check_in_time) = ?
@@ -42,12 +40,12 @@ try {
     $params = [$_SESSION['user_id'], $mes, $anio];
 
     if ($promotor) {
-        $sql .= " AND j.promotor_id = ?";
+        $sql .= " AND j.promotor_user_id = ?";
         $params[] = $promotor;
     }
 
     if ($proyecto) {
-        $sql .= " AND pp.proyecto_id = ?";
+        $sql .= " AND j.proyecto_id = ?";
         $params[] = $proyecto;
     }
 
@@ -69,7 +67,7 @@ try {
             $totalJornadas += $row['jornadas'];
             $totalActividades += $row['actividades'];
             $totalHoras += $row['horas'];
-            if ($row['estado'] === 'Aprobado') {
+            if ($row['estado'] === 'aprobado') {
                 $aprobadas += $row['jornadas'];
             }
         }
@@ -78,6 +76,7 @@ try {
 
         header('Content-Type: application/json');
         echo json_encode([
+            'success' => true,
             'metricas' => [
                 'total_jornadas' => $totalJornadas,
                 'total_actividades' => $totalActividades,
@@ -141,5 +140,16 @@ try {
     }
 } catch (Exception $e) {
     header('Content-Type: application/json');
-    echo json_encode(['success' => false, 'message' => $e->getMessage()]);
+    http_response_code(500);
+    echo json_encode([
+        'success' => false,
+        'message' => $e->getMessage(),
+        'metricas' => [
+            'total_jornadas' => 0,
+            'total_actividades' => 0,
+            'total_horas' => 0,
+            'porcentaje_aprobacion' => 0
+        ],
+        'detalle' => []
+    ]);
 }

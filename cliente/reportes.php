@@ -1,48 +1,74 @@
 <?php
-require_once '../config/session.php';
-require_once '../config/database.php';
-require_once '../db/ReporteMensual.php';
-require_once '../db/Proyecto.php';
-
-checkAuth();
-checkRole(['Cliente']);
-
-$user_id = $_SESSION['user_id'];
-$db = getDB();
-
-// Obtener proyectos del cliente
-$proyectos = Proyecto::getByCliente($db, $user_id);
-
 $pageTitle = 'Reportes';
-include '../includes/header.php';
+require_once __DIR__ . '/../includes/header.php';
+require_once __DIR__ . '/../config/session.php';
+require_once __DIR__ . '/../db/ReporteMensual.php';
+require_once __DIR__ . '/../db/Proyecto.php';
+
+requireRole(['Cliente']);
+
+$userId = getUserId();
+$proyectoModel = new Proyecto();
+
+$proyectos = $proyectoModel->getByCliente($userId);
 ?>
 
 <div class="container-fluid py-4">
+    <!-- Header -->
     <div class="row mb-4">
         <div class="col-12">
-            <div class="card shadow-sm">
-                <div class="card-header bg-primary text-white">
-                    <h5 class="mb-0"><i class="bi bi-file-earmark-bar-graph"></i> Reportes Mensuales</h5>
+            <div class="d-flex justify-content-between align-items-center">
+                <div>
+                    <h2 class="mb-1">Reportes Mensuales</h2>
+                    <p class="text-muted mb-0">
+                        <i class="bi bi-calendar-check me-2"></i>
+                        <?php echo strftime('%A, %d de %B de %Y'); ?>
+                    </p>
+                </div>
+                <div>
+                    <button class="btn btn-primary" onclick="location.reload()">
+                        <i class="bi bi-arrow-clockwise"></i> Actualizar
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Updated filter card to match dashboard aesthetic -->
+    <div class="row mb-4">
+        <div class="col-12">
+            <div class="card border-0 shadow-sm">
+                <div class="card-header bg-white border-0 py-3">
+                    <h5 class="mb-0 fw-bold">
+                        <i class="bi bi-funnel me-2 text-primary"></i>
+                        Filtros de Búsqueda
+                    </h5>
                 </div>
                 <div class="card-body">
-                    <div class="row mb-3">
+                    <div class="row g-3">
                         <div class="col-md-4">
-                            <label class="form-label">Proyecto</label>
+                            <label class="form-label fw-bold">
+                                <i class="bi bi-briefcase me-2"></i>Proyecto
+                            </label>
                             <select class="form-select" id="filtroProyecto" onchange="cargarReportes()">
                                 <option value="">Todos los proyectos</option>
                                 <?php foreach ($proyectos as $proyecto): ?>
-                                    <option value="<?= $proyecto['proyecto_id'] ?>">
-                                        <?= htmlspecialchars($proyecto['nombre']) ?>
+                                    <option value="<?= $proyecto['id'] ?>">
+                                        <?= htmlspecialchars($proyecto['nombre_proyecto']) ?>
                                     </option>
                                 <?php endforeach; ?>
                             </select>
                         </div>
                         <div class="col-md-3">
-                            <label class="form-label">Mes</label>
+                            <label class="form-label fw-bold">
+                                <i class="bi bi-calendar-month me-2"></i>Mes
+                            </label>
                             <input type="month" class="form-control" id="filtroMes" onchange="cargarReportes()">
                         </div>
                         <div class="col-md-3">
-                            <label class="form-label">Año</label>
+                            <label class="form-label fw-bold">
+                                <i class="bi bi-calendar-range me-2"></i>Año
+                            </label>
                             <input type="number" class="form-control" id="filtroAnio" value="<?= date('Y') ?>" onchange="cargarReportes()">
                         </div>
                         <div class="col-md-2 d-flex align-items-end">
@@ -56,9 +82,10 @@ include '../includes/header.php';
         </div>
     </div>
 
+    <!-- Updated results container to match dashboard styling -->
     <div class="row" id="listaReportes">
         <div class="col-12 text-center py-5">
-            <div class="spinner-border text-primary" role="status">
+            <div class="spinner-border text-primary" role="status" style="width: 3rem; height: 3rem;">
                 <span class="visually-hidden">Cargando...</span>
             </div>
         </div>
@@ -84,43 +111,58 @@ include '../includes/header.php';
                 const container = document.getElementById('listaReportes');
                 if (data.success && data.reportes.length > 0) {
                     container.innerHTML = data.reportes.map(r => `
-                    <div class="col-md-6 col-lg-4 mb-3">
-                        <div class="card shadow-sm h-100">
-                            <div class="card-header bg-light">
-                                <h6 class="mb-0">${r.proyecto_nombre}</h6>
-                                <small class="text-muted">${r.mes}/${r.anio}</small>
+                    <div class="col-md-6 col-lg-4 mb-4">
+                        <div class="card border-0 shadow-sm h-100">
+                            <div class="card-header bg-white border-0 py-3">
+                                <h6 class="mb-0 fw-bold">${r.proyecto_nombre}</h6>
+                                <small class="text-muted">
+                                    <i class="bi bi-calendar me-1"></i>
+                                    ${r.mes}/${r.anio}
+                                </small>
                             </div>
                             <div class="card-body">
-                                <div class="row text-center">
-                                    <div class="col-6 mb-3">
-                                        <div class="border rounded p-2">
-                                            <h4 class="text-primary mb-0">${r.total_jornadas}</h4>
-                                            <small class="text-muted">Jornadas</small>
-                                        </div>
-                                    </div>
-                                    <div class="col-6 mb-3">
-                                        <div class="border rounded p-2">
-                                            <h4 class="text-success mb-0">${r.total_actividades}</h4>
-                                            <small class="text-muted">Actividades</small>
+                                <div class="row text-center g-3">
+                                    <div class="col-6">
+                                        <div class="bg-primary bg-opacity-10 rounded p-3">
+                                            <h3 class="text-primary mb-1 fw-bold">${r.total_jornadas}</h3>
+                                            <small class="text-muted d-block">
+                                                <i class="bi bi-calendar-check me-1"></i>
+                                                Jornadas
+                                            </small>
                                         </div>
                                     </div>
                                     <div class="col-6">
-                                        <div class="border rounded p-2">
-                                            <h4 class="text-info mb-0">${r.horas_trabajadas}h</h4>
-                                            <small class="text-muted">Horas</small>
+                                        <div class="bg-success bg-opacity-10 rounded p-3">
+                                            <h3 class="text-success mb-1 fw-bold">${r.total_actividades}</h3>
+                                            <small class="text-muted d-block">
+                                                <i class="bi bi-list-check me-1"></i>
+                                                Actividades
+                                            </small>
                                         </div>
                                     </div>
                                     <div class="col-6">
-                                        <div class="border rounded p-2">
-                                            <h4 class="text-warning mb-0">${r.cumplimiento_ruta}%</h4>
-                                            <small class="text-muted">Cumplimiento</small>
+                                        <div class="bg-info bg-opacity-10 rounded p-3">
+                                            <h3 class="text-info mb-1 fw-bold">${r.horas_trabajadas}h</h3>
+                                            <small class="text-muted d-block">
+                                                <i class="bi bi-clock me-1"></i>
+                                                Horas
+                                            </small>
+                                        </div>
+                                    </div>
+                                    <div class="col-6">
+                                        <div class="bg-warning bg-opacity-10 rounded p-3">
+                                            <h3 class="text-warning mb-1 fw-bold">${r.cumplimiento_ruta}%</h3>
+                                            <small class="text-muted d-block">
+                                                <i class="bi bi-award me-1"></i>
+                                                Cumplimiento
+                                            </small>
                                         </div>
                                     </div>
                                 </div>
                             </div>
-                            <div class="card-footer">
-                                <button class="btn btn-sm btn-outline-primary w-100" onclick="verDetalleReporte(${r.reporte_mensual_id})">
-                                    <i class="bi bi-eye"></i> Ver Detalle
+                            <div class="card-footer bg-white border-0 py-3">
+                                <button class="btn btn-outline-primary w-100" onclick="verDetalleReporte(${r.reporte_mensual_id})">
+                                    <i class="bi bi-eye me-2"></i> Ver Detalle
                                 </button>
                             </div>
                         </div>
@@ -128,12 +170,33 @@ include '../includes/header.php';
                 `).join('');
                 } else {
                     container.innerHTML = `
-                    <div class="col-12 text-center py-5">
-                        <i class="bi bi-inbox text-muted" style="font-size: 3rem;"></i>
-                        <p class="text-muted mt-3">No hay reportes disponibles con los filtros seleccionados</p>
+                    <div class="col-12">
+                        <div class="card border-0 shadow-sm">
+                            <div class="card-body text-center py-5">
+                                <div class="bg-light rounded-circle d-inline-flex p-4 mb-3">
+                                    <i class="bi bi-inbox text-muted" style="font-size: 3rem;"></i>
+                                </div>
+                                <h5 class="text-muted">No hay reportes disponibles</h5>
+                                <p class="text-muted mb-0">
+                                    No se encontraron reportes con los filtros seleccionados.
+                                </p>
+                            </div>
+                        </div>
                     </div>
                 `;
                 }
+            })
+            .catch(error => {
+                console.error('[v0] Error loading reports:', error);
+                const container = document.getElementById('listaReportes');
+                container.innerHTML = `
+                    <div class="col-12">
+                        <div class="alert alert-danger border-0 shadow-sm">
+                            <i class="bi bi-exclamation-triangle me-2"></i>
+                            Error al cargar los reportes. Por favor, intente nuevamente.
+                        </div>
+                    </div>
+                `;
             });
     }
 
@@ -152,4 +215,4 @@ include '../includes/header.php';
     cargarReportes();
 </script>
 
-<?php include '../includes/footer.php'; ?>
+<?php require_once __DIR__ . '/../includes/footer.php'; ?>

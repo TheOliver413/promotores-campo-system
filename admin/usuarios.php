@@ -18,70 +18,79 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $action = $_POST['action'] ?? '';
 
     if ($action === 'create') {
-        $data = [
-            'nombre_completo' => $_POST['nombre_completo'],
-            'email' => $_POST['email'],
-            'password' => $_POST['password'],
-            'telefono' => $_POST['telefono'] ?? null,
-            'role_id' => $_POST['role_id'],
-            'estado' => 'activo'
-        ];
+        try {
+            $data = [
+                'nombre_completo' => $_POST['nombre_completo'],
+                'email' => $_POST['email'],
+                'password' => $_POST['password'],
+                'telefono' => $_POST['telefono'] ?? null,
+                'role_id' => $_POST['role_id'],
+                'estado' => 'activo'
+            ];
 
-        $userId = $userModel->create($data);
-        if ($userId) {
-            if (!empty($_POST['clientes'])) {
-                $usuarioClienteModel->asignarClientes($userId, $_POST['clientes']);
-            }
-
-            if (!empty($_POST['supervisores'])) {
-                foreach ($_POST['supervisores'] as $supervisorId) {
-                    $supervisorPromotorModel->asignarPromotores($supervisorId, [$userId]);
+            $userId = $userModel->create($data);
+            if ($userId) {
+                if (!empty($_POST['clientes'])) {
+                    $usuarioClienteModel->asignarClientes($userId, $_POST['clientes']);
                 }
-            }
-
-            $auditoriaModel->registrar(getUserId(), 'CREATE', 'usuarios', $userId);
-            $_SESSION['success'] = 'Usuario creado exitosamente';
-        }
-    } elseif ($action === 'update') {
-        $userId = $_POST['user_id'];
-        $data = [
-            'nombre_completo' => $_POST['nombre_completo'],
-            'email' => $_POST['email'],
-            'telefono' => $_POST['telefono'] ?? null,
-            'role_id' => $_POST['role_id'],
-            'estado' => $_POST['estado']
-        ];
-
-        if (!empty($_POST['password'])) {
-            $data['password'] = $_POST['password'];
-        }
-
-        if ($userModel->update($userId, $data)) {
-            if (isset($_POST['clientes'])) {
-                $usuarioClienteModel->asignarClientes($userId, $_POST['clientes']);
-            }
-
-            if (isset($_POST['supervisores'])) {
-                $db = Database::getInstance()->getConnection();
-                $stmt = $db->prepare("DELETE FROM supervisor_promotores WHERE promotor_id = ?");
-                $stmt->execute([$userId]);
 
                 if (!empty($_POST['supervisores'])) {
                     foreach ($_POST['supervisores'] as $supervisorId) {
-                        $stmt = $db->prepare("INSERT INTO supervisor_promotores (supervisor_id, promotor_id) VALUES (?, ?)");
-                        $stmt->execute([$supervisorId, $userId]);
+                        $supervisorPromotorModel->asignarPromotores($supervisorId, [$userId]);
                     }
                 }
+
+                $auditoriaModel->registrar(getUserId(), 'CREATE', 'usuarios', $userId);
+                $_SESSION['success'] = 'Usuario creado exitosamente';
+            }
+        } catch (Exception $e) {
+            $_SESSION['error'] = 'Error al crear usuario: ' . $e->getMessage();
+        }
+    } elseif ($action === 'update') {
+        $userId = $_POST['user_id'];
+
+        try {
+            $data = [
+                'nombre_completo' => $_POST['nombre_completo'],
+                'email' => $_POST['email'],
+                'telefono' => $_POST['telefono'] ?? null,
+                'role_id' => $_POST['role_id'],
+                'estado' => $_POST['estado']
+            ];
+
+            if (!empty($_POST['password'])) {
+                $data['password'] = $_POST['password'];
             }
 
-            $auditoriaModel->registrar(getUserId(), 'UPDATE', 'usuarios', $userId);
-            $_SESSION['success'] = 'Usuario actualizado exitosamente';
+            if ($userModel->update($userId, $data)) {
+                if (isset($_POST['clientes'])) {
+                    $usuarioClienteModel->asignarClientes($userId, $_POST['clientes']);
+                }
+
+                if (isset($_POST['supervisores'])) {
+                    $db = Database::getInstance()->getConnection();
+                    $stmt = $db->prepare("DELETE FROM supervisor_promotores WHERE promotor_id = ?");
+                    $stmt->execute([$userId]);
+
+                    if (!empty($_POST['supervisores'])) {
+                        foreach ($_POST['supervisores'] as $supervisorId) {
+                            $stmt = $db->prepare("INSERT INTO supervisor_promotores (supervisor_id, promotor_id) VALUES (?, ?)");
+                            $stmt->execute([$supervisorId, $userId]);
+                        }
+                    }
+                }
+
+                $auditoriaModel->registrar(getUserId(), 'UPDATE', 'usuarios', $userId);
+                $_SESSION['success'] = 'Usuario actualizado exitosamente';
+            }
+        } catch (Exception $e) {
+            $_SESSION['error'] = 'Error al actualizar usuario: ' . $e->getMessage();
         }
     } elseif ($action === 'delete') {
         $userId = $_POST['user_id'];
         if ($userModel->delete($userId)) {
             $auditoriaModel->registrar(getUserId(), 'DELETE', 'usuarios', $userId);
-            $_SESSION['success'] = 'Usuario eliminado exitosamente';
+            $_SESSION['success'] = 'Usuario eliminado exitosamente (eliminación lógica)';
         }
     } elseif ($action === 'toggle_status') {
         $userId = $_POST['user_id'];
@@ -134,78 +143,99 @@ $clientes = $clientesStmt->fetchAll();
         </div>
     <?php endif; ?>
 
-    <div class="card">
+    <?php if (isset($_SESSION['error'])): ?>
+        <!-- Added error message display section -->
+        <div class="alert alert-danger alert-dismissible fade show" role="alert">
+            <i class="bi bi-exclamation-triangle-fill"></i> <?php echo $_SESSION['error'];
+                                                            unset($_SESSION['error']); ?>
+            <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+        </div>
+    <?php endif; ?>
+
+    <div class="card border-0 shadow-sm">
         <div class="card-body">
-            <div class="table-responsive">
-                <table class="table table-hover" id="usuariosTable">
-                    <thead>
-                        <tr>
-                            <th>ID</th>
-                            <th>Nombre</th>
-                            <th>Email</th>
-                            <th>Teléfono</th>
-                            <th>Rol</th>
-                            <th>Clientes Asignados</th>
-                            <th>Supervisores</th>
-                            <th>Estado</th>
-                            <th>Fecha Registro</th>
-                            <th>Acciones</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        <?php foreach ($usuarios as $usuario): ?>
+            <?php if (empty($usuarios)): ?>
+                <!-- Added empty state when no users exist -->
+                <div class="text-center py-5">
+                    <i class="bi bi-people" style="font-size: 4rem; color: #dee2e6;"></i>
+                    <h4 class="text-muted mt-3">No hay usuarios registrados</h4>
+                    <p class="text-muted mb-4">Comienza creando el primer usuario del sistema</p>
+                    <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#userModal" onclick="resetForm()">
+                        <i class="bi bi-plus-circle"></i> Crear Primer Usuario
+                    </button>
+                </div>
+            <?php else: ?>
+                <div class="table-responsive">
+                    <table class="table table-hover" id="usuariosTable">
+                        <thead>
                             <tr>
-                                <td><?php echo $usuario['id']; ?></td>
-                                <td><?php echo htmlspecialchars($usuario['nombre_completo']); ?></td>
-                                <td><?php echo htmlspecialchars($usuario['email']); ?></td>
-                                <td><?php echo htmlspecialchars($usuario['telefono'] ?? '-'); ?></td>
-                                <td>
-                                    <span class="badge bg-info"><?php echo htmlspecialchars($usuario['role_name']); ?></span>
-                                </td>
-                                <td>
-                                    <?php if (!empty($usuario['clientes_nombres'])): ?>
-                                        <small class="text-success">
-                                            <i class="bi bi-building"></i>
-                                            <?php echo htmlspecialchars($usuario['clientes_nombres']); ?>
-                                        </small>
-                                    <?php else: ?>
-                                        <small class="text-muted">-</small>
-                                    <?php endif; ?>
-                                </td>
-                                <td>
-                                    <?php if (!empty($usuario['supervisores_nombres'])): ?>
-                                        <small class="text-primary">
-                                            <i class="bi bi-person-badge"></i>
-                                            <?php echo htmlspecialchars($usuario['supervisores_nombres']); ?>
-                                        </small>
-                                    <?php else: ?>
-                                        <small class="text-muted">-</small>
-                                    <?php endif; ?>
-                                </td>
-                                <td>
-                                    <?php if ($usuario['estado'] === 'activo'): ?>
-                                        <span class="badge bg-success">Activo</span>
-                                    <?php else: ?>
-                                        <span class="badge bg-danger">Inactivo</span>
-                                    <?php endif; ?>
-                                </td>
-                                <td><?php echo date('d/m/Y', strtotime($usuario['fecha_registro'])); ?></td>
-                                <td>
-                                    <button class="btn btn-sm btn-outline-primary" onclick="editUser(<?php echo $usuario['id']; ?>)">
-                                        <i class="bi bi-pencil"></i>
-                                    </button>
-                                    <button class="btn btn-sm btn-outline-warning" onclick="toggleStatus(<?php echo $usuario['id']; ?>, '<?php echo $usuario['estado'] === 'activo' ? 'inactivo' : 'activo'; ?>')">
-                                        <i class="bi bi-toggle-<?php echo $usuario['estado'] === 'activo' ? 'on' : 'off'; ?>"></i>
-                                    </button>
-                                    <button class="btn btn-sm btn-outline-danger" onclick="deleteUser(<?php echo $usuario['id']; ?>, '<?php echo htmlspecialchars($usuario['nombre_completo']); ?>')">
-                                        <i class="bi bi-trash"></i>
-                                    </button>
-                                </td>
+                                <th>ID</th>
+                                <th>Nombre</th>
+                                <th>Email</th>
+                                <th>Teléfono</th>
+                                <th>Rol</th>
+                                <th>Clientes Asignados</th>
+                                <th>Supervisores</th>
+                                <th>Estado</th>
+                                <th>Fecha Registro</th>
+                                <th>Acciones</th>
                             </tr>
-                        <?php endforeach; ?>
-                    </tbody>
-                </table>
-            </div>
+                        </thead>
+                        <tbody>
+                            <?php foreach ($usuarios as $usuario): ?>
+                                <tr>
+                                    <td><?php echo $usuario['id']; ?></td>
+                                    <td><?php echo htmlspecialchars($usuario['nombre_completo']); ?></td>
+                                    <td><?php echo htmlspecialchars($usuario['email']); ?></td>
+                                    <td><?php echo htmlspecialchars($usuario['telefono'] ?? '-'); ?></td>
+                                    <td>
+                                        <span class="badge bg-info"><?php echo htmlspecialchars($usuario['role_name']); ?></span>
+                                    </td>
+                                    <td>
+                                        <?php if (!empty($usuario['clientes_nombres'])): ?>
+                                            <small class="text-success">
+                                                <i class="bi bi-building"></i>
+                                                <?php echo htmlspecialchars($usuario['clientes_nombres']); ?>
+                                            </small>
+                                        <?php else: ?>
+                                            <small class="text-muted">-</small>
+                                        <?php endif; ?>
+                                    </td>
+                                    <td>
+                                        <?php if (!empty($usuario['supervisores_nombres'])): ?>
+                                            <small class="text-primary">
+                                                <i class="bi bi-person-badge"></i>
+                                                <?php echo htmlspecialchars($usuario['supervisores_nombres']); ?>
+                                            </small>
+                                        <?php else: ?>
+                                            <small class="text-muted">-</small>
+                                        <?php endif; ?>
+                                    </td>
+                                    <td>
+                                        <?php if ($usuario['estado'] === 'activo'): ?>
+                                            <span class="badge bg-success">Activo</span>
+                                        <?php else: ?>
+                                            <span class="badge bg-danger">Inactivo</span>
+                                        <?php endif; ?>
+                                    </td>
+                                    <td><?php echo date('d/m/Y', strtotime($usuario['fecha_registro'])); ?></td>
+                                    <td>
+                                        <button class="btn btn-sm btn-outline-primary" onclick="editUser(<?php echo $usuario['id']; ?>)">
+                                            <i class="bi bi-pencil"></i>
+                                        </button>
+                                        <button class="btn btn-sm btn-outline-warning" onclick="toggleStatus(<?php echo $usuario['id']; ?>, '<?php echo $usuario['estado'] === 'activo' ? 'inactivo' : 'activo'; ?>')">
+                                            <i class="bi bi-toggle-<?php echo $usuario['estado'] === 'activo' ? 'on' : 'off'; ?>"></i>
+                                        </button>
+                                        <button class="btn btn-sm btn-outline-danger" onclick="deleteUser(<?php echo $usuario['id']; ?>, '<?php echo htmlspecialchars($usuario['nombre_completo']); ?>')">
+                                            <i class="bi bi-trash"></i>
+                                        </button>
+                                    </td>
+                                </tr>
+                            <?php endforeach; ?>
+                        </tbody>
+                    </table>
+                </div>
+            <?php endif; ?>
         </div>
     </div>
 </div>

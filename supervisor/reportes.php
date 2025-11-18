@@ -166,7 +166,15 @@ include '../includes/header.php';
     async function cargarPromotores() {
         try {
             const response = await fetch('../api/validacion_crud.php?action=promotores');
+            if (!response.ok) {
+                throw new Error(`HTTP error! status: ${response.status}`);
+            }
             const promotores = await response.json();
+
+            if (!Array.isArray(promotores)) {
+                console.error('Error: La respuesta no es un array de promotores', promotores);
+                return;
+            }
 
             const select = document.getElementById('filtroPromotor');
             promotores.forEach(p => {
@@ -183,7 +191,15 @@ include '../includes/header.php';
     async function cargarProyectos() {
         try {
             const response = await fetch('../api/proyecto_asignaciones.php?action=list');
+            if (!response.ok) {
+                throw new Error(`HTTP error! status: ${response.status}`);
+            }
             const proyectos = await response.json();
+
+            if (!Array.isArray(proyectos)) {
+                console.error('Error: La respuesta no es un array de proyectos', proyectos);
+                return;
+            }
 
             const select = document.getElementById('filtroProyecto');
             proyectos.forEach(p => {

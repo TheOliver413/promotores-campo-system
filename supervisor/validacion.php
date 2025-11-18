@@ -16,6 +16,29 @@ include '../includes/header.php';
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.min.css" />
 <script src="https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.min.js"></script>
 
+<style>
+    /* Estilo de cada tab */
+    #validacionTabs .nav-link {
+        color: #fff !important;
+        background-color: #0d6efd !important;
+        border: none !important;
+        margin-right: 3px;
+    }
+
+    /* Hover */
+    #validacionTabs .nav-link:hover {
+        background-color: #0b5ed7 !important;
+    }
+
+    /* Activo */
+    #validacionTabs .nav-link.active {
+        background-color: #0a58ca !important;
+        color: #fff !important;
+        font-weight: bold;
+        border-bottom: 2px solid #fff !important;
+    }
+</style>
+
 <div class="container-fluid py-4">
     <div class="row mb-4">
         <div class="col-12">
@@ -69,7 +92,6 @@ include '../includes/header.php';
     </div>
 
     <!-- Tabs: Jornadas y Actividades -->
-    <!-- Agregando background color a tabs -->
     <ul class="nav nav-tabs mb-3 bg-light rounded-top" id="validacionTabs" role="tablist">
         <li class="nav-item" role="presentation">
             <button class="nav-link active" id="jornadas-tab" data-bs-toggle="tab" data-bs-target="#jornadas" type="button">
