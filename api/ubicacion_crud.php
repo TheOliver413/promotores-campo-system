@@ -35,7 +35,7 @@ try {
             $stmt->execute([$_SESSION['user_id']]);
             $ubicaciones = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
-            echo json_encode(['success' => true, 'data' => $ubicaciones]);
+            echo json_encode($ubicaciones);
             break;
 
         case 'get':
@@ -58,7 +58,7 @@ try {
                 throw new Exception('Ubicación no encontrada');
             }
 
-            echo json_encode(['success' => true, 'data' => $ubicacion]);
+            echo json_encode($ubicacion);
             break;
 
         case 'create':
@@ -105,14 +105,7 @@ try {
             }
 
             // Verificar que el cliente esté asignado al supervisor
-            $stmt = $db->prepare("
-                SELECT 1 FROM clientes c
-                INNER JOIN proyecto_clientes pc ON c.id = pc.cliente_id
-                INNER JOIN proyectos p ON pc.proyecto_id = p.id
-                INNER JOIN proyecto_promotores pp ON p.id = pp.proyecto_id
-                INNER JOIN supervisor_promotores sp ON pp.promotor_user_id = sp.promotor_id
-                WHERE c.id = ? AND sp.supervisor_id = ?
-            ");
+            $stmt = $db->prepare("SELECT 1 FROM clientes c INNER JOIN proyecto_clientes pc ON c.id = pc.cliente_id INNER JOIN proyectos p ON pc.proyecto_id = p.id INNER JOIN proyecto_promotores pp ON p.id = pp.proyecto_id INNER JOIN supervisor_promotores sp ON pp.promotor_user_id = sp.promotor_id WHERE c.id = ? AND sp.supervisor_id = ?");
             $stmt->execute([$clienteId, $_SESSION['user_id']]);
 
             if (!$stmt->fetch()) {
@@ -121,12 +114,7 @@ try {
 
             if ($ubicacionId) {
                 // Actualizar
-                $stmt = $db->prepare("
-                    UPDATE ubicaciones_clientes 
-                    SET cliente_id = ?, nombre_ubicacion = ?, direccion = ?, latitud = ?, longitud = ?,
-                        contacto_nombre = ?, contacto_telefono = ?, contacto_email = ?, notas = ?
-                    WHERE id = ?
-                ");
+                $stmt = $db->prepare("UPDATE ubicaciones_clientes SET cliente_id = ?, nombre_ubicacion = ?, direccion = ?, latitud = ?, longitud = ?, contacto_nombre = ?, contacto_telefono = ?, contacto_email = ?, notas = ? WHERE id = ?");
                 $stmt->execute([
                     $clienteId,
                     $nombreUbicacion,
@@ -143,11 +131,7 @@ try {
                 $message = 'Ubicación actualizada exitosamente';
             } else {
                 // Crear
-                $stmt = $db->prepare("
-                    INSERT INTO ubicaciones_clientes 
-                    (cliente_id, nombre_ubicacion, direccion, latitud, longitud, contacto_nombre, contacto_telefono, contacto_email, notas, activo)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 1)
-                ");
+                $stmt = $db->prepare("INSERT INTO ubicaciones_clientes (cliente_id, nombre_ubicacion, direccion, latitud, longitud, contacto_nombre, contacto_telefono, contacto_email, notas, activo) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 1)");
                 $stmt->execute([
                     $clienteId,
                     $nombreUbicacion,
@@ -203,7 +187,7 @@ try {
                 throw new Exception('No tiene permisos para eliminar esta ubicación');
             }
 
-            $stmt = $db->prepare("DELETE FROM ubicaciones_clientes WHERE id = ?");
+            $stmt = $db->prepare("UPDATE ubicaciones_clientes SET activo = 0 WHERE id = ?");
             $stmt->execute([$id]);
 
             // Auditoría

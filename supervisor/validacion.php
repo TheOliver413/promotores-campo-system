@@ -12,6 +12,10 @@ $pageTitle = 'Validación de Jornadas';
 include '../includes/header.php';
 ?>
 
+<!-- CHANGE: Agregando Leaflet CSS y JS para mapa en tiempo real -->
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.min.css" />
+<script src="https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.min.js"></script>
+
 <div class="container-fluid py-4">
     <div class="row mb-4">
         <div class="col-12">
@@ -27,16 +31,18 @@ include '../includes/header.php';
                     <div class="row g-3">
                         <div class="col-md-3">
                             <label class="form-label">Promotor</label>
-                            <select class="form-select" id="filtroPromotor">
+                            <!-- Agregando background color a select -->
+                            <select class="form-select bg-light" id="filtroPromotor">
                                 <option value="">Todos</option>
                             </select>
                         </div>
                         <div class="col-md-3">
                             <label class="form-label">Estado</label>
-                            <select class="form-select" id="filtroEstado">
-                                <option value="Pendiente">Pendiente</option>
-                                <option value="Aprobado">Aprobado</option>
-                                <option value="Rechazado">Rechazado</option>
+                            <!-- Agregando background color a select -->
+                            <select class="form-select bg-light" id="filtroEstado">
+                                <option value="pendiente">Pendiente</option>
+                                <option value="aprobado">Aprobado</option>
+                                <option value="rechazado">Rechazado</option>
                                 <option value="">Todos</option>
                             </select>
                         </div>
@@ -63,15 +69,16 @@ include '../includes/header.php';
     </div>
 
     <!-- Tabs: Jornadas y Actividades -->
-    <ul class="nav nav-tabs mb-3" id="validacionTabs" role="tablist">
+    <!-- Agregando background color a tabs -->
+    <ul class="nav nav-tabs mb-3 bg-light rounded-top" id="validacionTabs" role="tablist">
         <li class="nav-item" role="presentation">
             <button class="nav-link active" id="jornadas-tab" data-bs-toggle="tab" data-bs-target="#jornadas" type="button">
-                Jornadas Pendientes <span class="badge bg-danger" id="badgeJornadas">0</span>
+                Jornadas Pendientes <span class="badge rounded-pill bg-danger" id="badgeJornadas">0</span>
             </button>
         </li>
         <li class="nav-item" role="presentation">
             <button class="nav-link" id="actividades-tab" data-bs-toggle="tab" data-bs-target="#actividades" type="button">
-                Actividades Pendientes <span class="badge bg-danger" id="badgeActividades">0</span>
+                Actividades Pendientes <span class="badge rounded-pill bg-danger" id="badgeActividades">0</span>
             </button>
         </li>
     </ul>
@@ -133,7 +140,7 @@ include '../includes/header.php';
 
 <!-- Modal Detalle Jornada -->
 <div class="modal fade" id="modalDetalleJornada" tabindex="-1">
-    <div class="modal-dialog modal-lg">
+    <div class="modal-dialog modal-xl">
         <div class="modal-content">
             <div class="modal-header">
                 <h5 class="modal-title">Detalle de Jornada</h5>
@@ -141,6 +148,7 @@ include '../includes/header.php';
             </div>
             <div class="modal-body" id="detalleJornadaBody">
                 <!-- Cargado dinámicamente -->
+                <div id="mapJornada" style="height: 400px;"></div>
             </div>
             <div class="modal-footer">
                 <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cerrar</button>
@@ -241,7 +249,6 @@ include '../includes/header.php';
             const response = await fetch(`../api/validacion_crud.php?${params}`);
 
             const text = await response.text();
-            console.log('[v0] Respuesta jornadas (raw):', text);
 
             let jornadas;
             try {
@@ -262,7 +269,7 @@ include '../includes/header.php';
                 return;
             }
 
-            const pendientes = jornadas.filter(j => j.estado_validacion === 'Pendiente').length;
+            const pendientes = jornadas.filter(j => (j.estado_validacion || '').toLowerCase() === 'pendiente').length;
             document.getElementById('badgeJornadas').textContent = pendientes;
 
             if (jornadas.length === 0) {
@@ -272,23 +279,24 @@ include '../includes/header.php';
 
             jornadas.forEach(jornada => {
                 const tr = document.createElement('tr');
+                const estado = (jornada.estado_validacion || 'pendiente').toLowerCase();
                 tr.innerHTML = `
-                <td>${jornada.jornada_id}</td>
-                <td>${jornada.nombre_promotor}</td>
-                <td>${jornada.check_in_time || 'N/A'}</td>
-                <td>${jornada.check_out_time || 'Pendiente'}</td>
-                <td>${jornada.horas_calculadas || '0'} hrs</td>
-                <td>
-                    <span class="badge bg-${getEstadoColor(jornada.estado_validacion)}">
-                        ${jornada.estado_validacion}
-                    </span>
-                </td>
-                <td>
-                    <button class="btn btn-sm btn-info" onclick="verDetalleJornada(${jornada.jornada_id})">
-                        <i class="bi bi-eye"></i> Ver
-                    </button>
-                </td>
-            `;
+                    <td>${jornada.jornada_id}</td>
+                    <td>${jornada.nombre_promotor}</td>
+                    <td>${jornada.check_in_time || 'N/A'}</td>
+                    <td>${jornada.check_out_time || 'Pendiente'}</td>
+                    <td>${jornada.horas_calculadas || '0'} hrs</td>
+                    <td>
+                        <span class="badge bg-${getEstadoColor(estado)}">
+                            ${estado.charAt(0).toUpperCase() + estado.slice(1)}
+                        </span>
+                    </td>
+                    <td>
+                        <button class="btn btn-sm btn-info" onclick="verDetalleJornada(${jornada.jornada_id})">
+                            <i class="bi bi-eye"></i> Ver
+                        </button>
+                    </td>
+                `;
                 tbody.appendChild(tr);
             });
         } catch (error) {
@@ -311,7 +319,6 @@ include '../includes/header.php';
             const response = await fetch(`../api/validacion_crud.php?${params}`);
 
             const text = await response.text();
-            console.log('[v0] Respuesta actividades (raw):', text);
 
             let actividades;
             try {
@@ -332,7 +339,7 @@ include '../includes/header.php';
                 return;
             }
 
-            const pendientes = actividades.filter(a => a.estado_validacion === 'Pendiente').length;
+            const pendientes = actividades.filter(a => (a.estado_validacion || '').toLowerCase() === 'pendiente').length;
             document.getElementById('badgeActividades').textContent = pendientes;
 
             if (actividades.length === 0) {
@@ -342,23 +349,24 @@ include '../includes/header.php';
 
             actividades.forEach(actividad => {
                 const tr = document.createElement('tr');
+                const estado = (actividad.estado_validacion || 'pendiente').toLowerCase();
                 tr.innerHTML = `
-                <td>${actividad.actividad_id}</td>
-                <td>${actividad.nombre_promotor}</td>
-                <td>${actividad.tipo_actividad}</td>
-                <td>${actividad.fecha_actividad}</td>
-                <td>${actividad.latitud}, ${actividad.longitud}</td>
-                <td>
-                    <span class="badge bg-${getEstadoColor(actividad.estado_validacion)}">
-                        ${actividad.estado_validacion}
-                    </span>
-                </td>
-                <td>
-                    <button class="btn btn-sm btn-info" onclick="verDetalleActividad(${actividad.actividad_id})">
-                        <i class="bi bi-eye"></i> Ver
-                    </button>
-                </td>
-            `;
+                    <td>${actividad.actividad_id}</td>
+                    <td>${actividad.nombre_promotor}</td>
+                    <td>${actividad.tipo_actividad}</td>
+                    <td>${actividad.fecha_actividad}</td>
+                    <td>${actividad.latitud}, ${actividad.longitud}</td>
+                    <td>
+                        <span class="badge bg-${getEstadoColor(estado)}">
+                            ${estado.charAt(0).toUpperCase() + estado.slice(1)}
+                        </span>
+                    </td>
+                    <td>
+                        <button class="btn btn-sm btn-info" onclick="verDetalleActividad(${actividad.actividad_id})">
+                            <i class="bi bi-eye"></i> Ver
+                        </button>
+                    </td>
+                `;
                 tbody.appendChild(tr);
             });
         } catch (error) {
@@ -371,35 +379,70 @@ include '../includes/header.php';
     async function verDetalleJornada(id) {
         try {
             const response = await fetch(`../api/validacion_crud.php?action=detalle_jornada&id=${id}`);
+
+            if (!response.ok) {
+                throw new Error('Error al obtener detalle');
+            }
+
             const jornada = await response.json();
+
+            if (!jornada || typeof jornada !== 'object' || jornada.success === false) {
+                console.error('[v0] Respuesta inválida:', jornada);
+                alert('Error: No se pudo cargar el detalle de la jornada');
+                return;
+            }
 
             jornadaActual = id;
 
             const body = document.getElementById('detalleJornadaBody');
+            const checkinLat = jornada.check_in_lat ?? 'N/A';
+            const checkinLong = jornada.check_in_lon ?? 'N/A';
+            const checkoutLat = jornada.check_out_lat ?? 'N/A';
+            const checkoutLong = jornada.check_out_lon ?? 'N/A';
+            const checkinTime = jornada.check_in_time ?? 'N/A';
+            const checkoutTime = jornada.check_out_time ?? 'Pendiente';
+            const horasCal = jornada.horas_calculadas ?? '0';
+            const promotor = jornada.nombre_promotor ?? 'N/A';
+            const fotoUrl = jornada.check_in_foto_url ?? null;
+
             body.innerHTML = `
             <div class="row">
                 <div class="col-md-6">
-                    <p><strong>Promotor:</strong> ${jornada.nombre_promotor}</p>
-                    <p><strong>Check-in:</strong> ${jornada.check_in_time}</p>
-                    <p><strong>Check-out:</strong> ${jornada.check_out_time || 'Pendiente'}</p>
-                    <p><strong>Horas:</strong> ${jornada.horas_calculadas || '0'} hrs</p>
+                    <h6 class="mb-3"><strong>Información de Jornada</strong></h6>
+                    <p><strong>Promotor:</strong> ${promotor}</p>
+                    <p><strong>Check-in:</strong> ${checkinTime}</p>
+                    <p><strong>Check-out:</strong> ${checkoutTime}</p>
+                    <p><strong>Horas:</strong> ${horasCal} hrs</p>
+                    <hr>
+                    <p><strong>Ubicación Check-in:</strong><br><span class="text-muted">${checkinLat}, ${checkinLong}</span></p>
+                    ${jornada.check_out_lat ? `<p><strong>Ubicación Check-out:</strong><br><span class="text-muted">${checkoutLat}, ${checkoutLong}</span></p>` : ''}
+                    
+                    ${fotoUrl ? `
+                        <hr>
+                        <h6><strong>Foto Check-in</strong></h6>
+                        <img src="../${fotoUrl}" class="img-fluid rounded" style="max-height: 250px; width: 100%; object-fit: cover;" 
+                             onerror="this.onerror=null; this.src='/placeholder.svg?height=250&width=400'; this.alt='Imagen no disponible';">
+                    ` : ''}
                 </div>
                 <div class="col-md-6">
-                    <p><strong>Ubicación Check-in:</strong><br>${jornada.check_in_latitud}, ${jornada.check_in_longitud}</p>
-                    ${jornada.check_out_latitud ? `<p><strong>Ubicación Check-out:</strong><br>${jornada.check_out_latitud}, ${jornada.check_out_longitud}</p>` : ''}
+                    <h6 class="mb-3"><strong>Ubicaciones en Mapa</strong></h6>
+                    <!-- Contenedor para mapa Leaflet -->
+                    <div id="mapJornada" style="height: 400px; border-radius: 5px; background: #e0e0e0;"></div>
                 </div>
             </div>
-            ${jornada.check_in_foto_url ? `
-                <div class="mt-3">
-                    <strong>Foto Check-in:</strong><br>
-                    <img src="${jornada.check_in_foto_url}" class="img-fluid rounded" style="max-height: 300px;">
-                </div>
-            ` : ''}
-        `;
+            `;
 
-            new bootstrap.Modal(document.getElementById('modalDetalleJornada')).show();
+            // Mostrar modal
+            const modal = new bootstrap.Modal(document.getElementById('modalDetalleJornada'));
+            modal.show();
+
+            setTimeout(() => {
+                inicializarMapaJornada(checkinLat, checkinLong, checkoutLat, checkoutLong, promotor);
+            }, 500);
+
         } catch (error) {
-            alert('Error al cargar detalle');
+            console.error('[v0] Error al cargar detalle jornada:', error);
+            alert('Error al cargar detalle: ' + error.message);
         }
     }
 
@@ -407,59 +450,83 @@ include '../includes/header.php';
     async function verDetalleActividad(id) {
         try {
             const response = await fetch(`../api/validacion_crud.php?action=detalle_actividad&id=${id}`);
+
+            if (!response.ok) {
+                throw new Error('Error al obtener detalle');
+            }
+
             const actividad = await response.json();
+
+            if (!actividad || typeof actividad !== 'object' || actividad.success === false) {
+                console.error('[v0] Respuesta inválida:', actividad);
+                alert('Error: No se pudo cargar el detalle de la actividad');
+                return;
+            }
 
             actividadActual = id;
 
             const body = document.getElementById('detalleActividadBody');
+            const promotor = actividad.nombre_promotor ?? 'N/A';
+            const tipo = actividad.tipo_actividad ?? 'N/A';
+            const fecha = actividad.timestamp_actividad ?? 'N/A';
+            const desc = actividad.descripcion ?? 'Sin descripción';
+            const lat = actividad.latitud ?? 'N/A';
+            const long = actividad.longitud ?? 'N/A';
+            const tiempo = actividad.tiempo_minutos ?? 'N/A';
+            const evidenciasCount = actividad.evidencias?.length ?? 0;
+
             body.innerHTML = `
             <div class="row">
                 <div class="col-md-6">
-                    <p><strong>Promotor:</strong> ${actividad.nombre_promotor}</p>
-                    <p><strong>Tipo:</strong> ${actividad.tipo_actividad}</p>
-                    <p><strong>Fecha:</strong> ${actividad.fecha_actividad}</p>
-                    <p><strong>Ubicación:</strong> ${actividad.latitud}, ${actividad.longitud}</p>
+                    <p><strong>Promotor:</strong> ${promotor}</p>
+                    <p><strong>Tipo:</strong> ${tipo}</p>
+                    <p><strong>Fecha:</strong> ${fecha}</p>
+                    <p><strong>Descripción:</strong><br>${desc}</p>
                 </div>
                 <div class="col-md-6">
-                    <p><strong>Descripción:</strong><br>${actividad.descripcion || 'N/A'}</p>
+                    <p><strong>Ubicación:</strong><br>${lat}, ${long}</p>
+                    <p><strong>Tiempo:</strong> ${tiempo} minutos</p>
+                    ${evidenciasCount > 0 ? `<p><strong>Evidencias:</strong> ${evidenciasCount} archivo(s)</p>` : ''}
                 </div>
             </div>
             ${actividad.evidencias && actividad.evidencias.length > 0 ? `
-                <div class="mt-3">
-                    <strong>Evidencias:</strong><br>
-                    <div class="row g-2">
-                        ${actividad.evidencias.map(e => `
-                            <div class="col-md-4">
-                                ${e.tipo_evidencia === 'foto' ? 
-                                    `<img src="${e.url_evidencia}" class="img-fluid rounded">` :
-                                    `<a href="${e.url_evidencia}" target="_blank" class="btn btn-sm btn-primary">Ver ${e.tipo_evidencia}</a>`
-                                }
-                            </div>
-                        `).join('')}
+                <hr>
+                <div class="row">
+                    <div class="col-12">
+                        <h6>Evidencias:</h6>
+                        <div class="d-flex flex-wrap gap-2">
+                            ${actividad.evidencias.map(e => `
+                                <img src="../${e.url_archivo}" class="img-thumbnail" style="max-width: 150px; max-height: 150px; object-fit: cover;" 
+                                     onerror="this.onerror=null; this.src='/placeholder.svg?height=150&width=150'; this.alt='Imagen no disponible';">
+                            `).join('')}
+                        </div>
                     </div>
                 </div>
             ` : ''}
-        `;
+            `;
 
             new bootstrap.Modal(document.getElementById('modalDetalleActividad')).show();
         } catch (error) {
+            console.error('[v0] Error al cargar detalle:', error);
             alert('Error al cargar detalle');
         }
     }
 
     // Aprobar jornada
     async function aprobarJornada() {
-        if (!confirm('¿Está seguro de aprobar esta jornada?')) return;
+        if (!jornadaActual) return;
+
+        if (!confirm('¿Aprobar esta jornada?')) return;
 
         try {
             const response = await fetch('../api/validacion_crud.php', {
                 method: 'POST',
                 headers: {
-                    'Content-Type': 'application/json'
+                    'Content-Type': 'application/json',
                 },
                 body: JSON.stringify({
                     action: 'aprobar_jornada',
-                    jornada_id: jornadaActual
+                    id: jornadaActual
                 })
             });
             const result = await response.json();
@@ -469,33 +536,36 @@ include '../includes/header.php';
                 bootstrap.Modal.getInstance(document.getElementById('modalDetalleJornada')).hide();
                 cargarJornadas();
             } else {
-                alert('Error: ' + result.message);
+                alert('Error: ' + (result.message || 'Error desconocido'));
             }
         } catch (error) {
+            console.error('[v0] Error al aprobar jornada:', error);
             alert('Error al aprobar jornada');
         }
     }
 
     // Rechazar jornada
     function rechazarJornada() {
+        if (!jornadaActual) return;
         tipoRechazo = 'jornada';
-        bootstrap.Modal.getInstance(document.getElementById('modalDetalleJornada')).hide();
         new bootstrap.Modal(document.getElementById('modalRechazo')).show();
     }
 
     // Aprobar actividad
     async function aprobarActividad() {
-        if (!confirm('¿Está seguro de aprobar esta actividad?')) return;
+        if (!actividadActual) return;
+
+        if (!confirm('¿Aprobar esta actividad?')) return;
 
         try {
             const response = await fetch('../api/validacion_crud.php', {
                 method: 'POST',
                 headers: {
-                    'Content-Type': 'application/json'
+                    'Content-Type': 'application/json',
                 },
                 body: JSON.stringify({
                     action: 'aprobar_actividad',
-                    actividad_id: actividadActual
+                    id: actividadActual
                 })
             });
             const result = await response.json();
@@ -505,17 +575,18 @@ include '../includes/header.php';
                 bootstrap.Modal.getInstance(document.getElementById('modalDetalleActividad')).hide();
                 cargarActividades();
             } else {
-                alert('Error: ' + result.message);
+                alert('Error: ' + (result.message || 'Error desconocido'));
             }
         } catch (error) {
+            console.error('[v0] Error al aprobar actividad:', error);
             alert('Error al aprobar actividad');
         }
     }
 
     // Rechazar actividad
     function rechazarActividad() {
+        if (!actividadActual) return;
         tipoRechazo = 'actividad';
-        bootstrap.Modal.getInstance(document.getElementById('modalDetalleActividad')).hide();
         new bootstrap.Modal(document.getElementById('modalRechazo')).show();
     }
 
@@ -529,18 +600,25 @@ include '../includes/header.php';
         }
 
         try {
-            const action = tipoRechazo === 'jornada' ? 'rechazar_jornada' : 'rechazar_actividad';
-            const id = tipoRechazo === 'jornada' ? jornadaActual : actividadActual;
+            let action, id;
+
+            if (tipoRechazo === 'jornada') {
+                action = 'rechazar_jornada';
+                id = jornadaActual;
+            } else {
+                action = 'rechazar_actividad';
+                id = actividadActual;
+            }
 
             const response = await fetch('../api/validacion_crud.php', {
                 method: 'POST',
                 headers: {
-                    'Content-Type': 'application/json'
+                    'Content-Type': 'application/json',
                 },
                 body: JSON.stringify({
                     action: action,
                     id: id,
-                    motivo_rechazo: motivo
+                    motivo: motivo
                 })
             });
             const result = await response.json();
@@ -548,32 +626,21 @@ include '../includes/header.php';
             if (result.success) {
                 alert('Rechazado exitosamente');
                 bootstrap.Modal.getInstance(document.getElementById('modalRechazo')).hide();
-                document.getElementById('motivoRechazo').value = '';
+                bootstrap.Modal.getInstance(document.getElementById(tipoRechazo === 'jornada' ? 'modalDetalleJornada' : 'modalDetalleActividad')).hide();
 
                 if (tipoRechazo === 'jornada') {
                     cargarJornadas();
                 } else {
                     cargarActividades();
                 }
+
+                document.getElementById('motivoRechazo').value = '';
             } else {
-                alert('Error: ' + result.message);
+                alert('Error: ' + (result.message || 'Error desconocido'));
             }
         } catch (error) {
+            console.error('[v0] Error al rechazar:', error);
             alert('Error al rechazar');
-        }
-    }
-
-    // Utilidades
-    function getEstadoColor(estado) {
-        switch (estado) {
-            case 'Pendiente':
-                return 'warning';
-            case 'Aprobado':
-                return 'success';
-            case 'Rechazado':
-                return 'danger';
-            default:
-                return 'secondary';
         }
     }
 
@@ -584,10 +651,94 @@ include '../includes/header.php';
 
     function limpiarFiltros() {
         document.getElementById('filtroPromotor').value = '';
-        document.getElementById('filtroEstado').value = 'Pendiente';
+        document.getElementById('filtroEstado').value = 'pendiente';
         document.getElementById('filtroFechaDesde').value = '';
         document.getElementById('filtroFechaHasta').value = '';
         aplicarFiltros();
+    }
+
+    function getEstadoColor(estado) {
+        estado = (estado || '').toLowerCase();
+        switch (estado) {
+            case 'aprobado':
+                return 'success';
+            case 'rechazado':
+                return 'danger';
+            case 'pendiente':
+                return 'warning';
+            default:
+                return 'secondary';
+        }
+    }
+
+    function inicializarMapaJornada(checkinLat, checkinLon, checkoutLat, checkoutLon, nombrePromotor) {
+        // Validar coordenadas
+        if (checkinLat === 'N/A' || checkinLon === 'N/A') {
+            document.getElementById('mapJornada').innerHTML = '<div class="alert alert-warning m-3">No hay datos de ubicación disponibles</div>';
+            return;
+        }
+
+        // Convertir a números
+        const lat1 = parseFloat(checkinLat);
+        const lon1 = parseFloat(checkinLon);
+        const lat2 = parseFloat(checkoutLat);
+        const lon2 = parseFloat(checkoutLon);
+
+        if (isNaN(lat1) || isNaN(lon1)) {
+            document.getElementById('mapJornada').innerHTML = '<div class="alert alert-warning m-3">Coordenadas inválidas</div>';
+            return;
+        }
+
+        // Crear mapa centrado en check-in
+        const map = L.map('mapJornada').setView([lat1, lon1], 15);
+
+        // Agregar capa de OpenStreetMap
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+            attribution: '© OpenStreetMap contributors',
+            maxZoom: 19
+        }).addTo(map);
+
+        // Marcador Check-in (verde)
+        L.circleMarker([lat1, lon1], {
+            radius: 8,
+            fillColor: '#28a745',
+            color: '#fff',
+            weight: 3,
+            opacity: 1,
+            fillOpacity: 0.8
+        }).bindPopup(`<strong>Check-in</strong><br>${nombrePromotor}`).addTo(map);
+
+        // Si hay check-out, agregar marcador y línea
+        if (!isNaN(lat2) && !isNaN(lon2)) {
+            L.circleMarker([lat2, lon2], {
+                radius: 8,
+                fillColor: '#dc3545',
+                color: '#fff',
+                weight: 3,
+                opacity: 1,
+                fillOpacity: 0.8
+            }).bindPopup('<strong>Check-out</strong>').addTo(map);
+
+            // Línea entre puntos
+            L.polyline([
+                [lat1, lon1],
+                [lat2, lon2]
+            ], {
+                color: '#007bff',
+                weight: 2,
+                opacity: 0.7,
+                dashArray: '5, 5'
+            }).addTo(map);
+
+            // Ajustar vista para mostrar ambos puntos
+            const bounds = L.latLngBounds([
+                [lat1, lon1],
+                [lat2, lon2]
+            ]);
+            map.fitBounds(bounds, {
+                padding: [50, 50]
+            });
+        }
     }
 </script>
 

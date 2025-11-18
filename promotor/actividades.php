@@ -4,6 +4,7 @@ require_once '../config/database.php';
 require_once '../db/Actividad.php';
 require_once '../db/TipoActividad.php';
 require_once '../db/Jornada.php';
+require_once '../includes/auth_helpers.php';
 
 checkAuth();
 checkRole(['Promotor']);
@@ -14,7 +15,8 @@ $db = getDB();
 $jornadaModel = new Jornada();
 $jornadaActiva = $jornadaModel->getJornadaActiva($user_id);
 
-$tipos_actividad = TipoActividad::getAll($db);
+$tipoActividadModel = new TipoActividad();
+$tipos_actividad = $tipoActividadModel->getAll();
 
 $pageTitle = 'Registro de Actividades';
 include '../includes/header.php';
@@ -73,8 +75,46 @@ include '../includes/header.php';
         <div class="alert alert-warning" role="alert">
             <i class="bi bi-exclamation-triangle me-2"></i>
             <strong>Jornada no iniciada.</strong> Debes hacer check-in desde el <a href="dashboard.php" class="alert-link">dashboard</a> para registrar actividades.
+            <div class="mt-2">
+                <p class="mb-1"><strong>¿Dónde agregar actividades?</strong></p>
+                <ol class="mb-0">
+                    <li>Ve al <a href="dashboard.php" class="alert-link">Dashboard</a> e inicia tu jornada haciendo Check-in</li>
+                    <li>Una vez iniciada la jornada, regresa aquí para registrar actividades</li>
+                    <li>También puedes registrar actividades desde las <a href="asignaciones.php" class="alert-link">Asignaciones</a> cuando tengas una ruta activa</li>
+                </ol>
+            </div>
         </div>
     <?php endif; ?>
+
+    <!-- Added info card explaining how to add activities -->
+    <div class="row mb-3">
+        <div class="col-12">
+            <div class="card border-primary" style="border-radius: 15px;">
+                <div class="card-body">
+                    <h5 class="card-title text-primary"><i class="bi bi-info-circle me-2"></i>¿Cómo agregar actividades?</h5>
+                    <p class="mb-2">Las actividades se pueden registrar de dos formas:</p>
+                    <div class="row">
+                        <div class="col-md-6">
+                            <div class="p-3 bg-light rounded">
+                                <h6 class="fw-bold"><i class="bi bi-1-circle text-primary me-2"></i>Desde Actividades (aquí)</h6>
+                                <p class="mb-0 small text-muted">
+                                    Registra cualquier actividad durante tu jornada activa. Estas actividades no están vinculadas a una asignación específica.
+                                </p>
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <div class="p-3 bg-light rounded">
+                                <h6 class="fw-bold"><i class="bi bi-2-circle text-primary me-2"></i>Desde Asignaciones</h6>
+                                <p class="mb-0 small text-muted">
+                                    Cuando tengas una ruta activa en <a href="asignaciones.php">Asignaciones</a>, puedes registrar actividades vinculadas directamente a esa asignación.
+                                </p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
 
     <div class="row">
         <div class="col-12">
@@ -235,12 +275,10 @@ include '../includes/header.php';
     function eliminarEvidencia(index) {
         evidenciasFiles.splice(index, 1);
 
-        // Recreate FileList
         const dt = new DataTransfer();
         evidenciasFiles.forEach(file => dt.items.add(file));
         document.getElementById('evidencias').files = dt.files;
 
-        // Re-render preview
         document.getElementById('evidencias').dispatchEvent(new Event('change'));
     }
 
@@ -266,7 +304,6 @@ include '../includes/header.php';
         formData.append('latitud', coordenadas.latitud);
         formData.append('longitud', coordenadas.longitud);
 
-        // Agregar evidencias
         evidenciasFiles.forEach((file, index) => {
             formData.append(`evidencia_${index}`, file);
         });
@@ -322,9 +359,9 @@ include '../includes/header.php';
                                                 <i class="bi bi-calendar3 me-1"></i>${a.fecha_hora}
                                             </small>
                                             ${a.evidencias_count > 0 ? `
-                                                <small class="text-muted">
-                                                    <i class="bi bi-paperclip me-1"></i>${a.evidencias_count} evidencia(s)
-                                                </small>
+                                            <small class="text-muted">
+                                                <i class="bi bi-paperclip me-1"></i>${a.evidencias_count} evidencia(s)
+                                            </small>
                                             ` : ''}
                                         </div>
                                     </div>
@@ -342,11 +379,12 @@ include '../includes/header.php';
                         </div>
                     `).join('');
                 } else {
+                    const jornadaActiva = <?= $jornadaActiva ? 'true' : 'false' ?>;
                     container.innerHTML = `
                         <div class="text-center py-5">
                             <i class="bi bi-inbox text-muted" style="font-size: 4rem;"></i>
                             <p class="mt-3 text-muted">No hay actividades registradas</p>
-                            ${<?= $jornadaActiva ? 'true' : 'false' ?> ? 
+                            ${jornadaActiva ? 
                                 '<button class="btn btn-primary mt-2" data-bs-toggle="modal" data-bs-target="#modalActividad"><i class="bi bi-plus-circle me-2"></i>Registrar Primera Actividad</button>' : 
                                 '<p class="text-muted">Inicia tu jornada para registrar actividades</p>'
                             }
@@ -399,25 +437,25 @@ include '../includes/header.php';
                         </div>
                         
                         ${a.evidencias && a.evidencias.length > 0 ? `
-                            <hr>
-                            <div class="mb-3">
-                                <h6 class="fw-bold"><i class="bi bi-images me-2"></i>Evidencias:</h6>
-                                <div class="d-flex flex-wrap gap-2 mt-2">
-                                    ${a.evidencias.map(e => `
-                                        <img src="${e.url}" class="preview-image" 
-                                             onclick="verImagenCompleta('${e.url}')"
-                                             title="Click para ver completa">
-                                    `).join('')}
-                                </div>
+                        <hr>
+                        <div class="mb-3">
+                            <h6 class="fw-bold"><i class="bi bi-images me-2"></i>Evidencias:</h6>
+                            <div class="d-flex flex-wrap gap-2 mt-2">
+                                ${a.evidencias.map(e => `
+                                    <img src="${e.url}" class="preview-image" 
+                                         onclick="verImagenCompleta('${e.url}')"
+                                         title="Click para ver completa">
+                                `).join('')}
                             </div>
+                        </div>
                         ` : ''}
                         
                         ${a.motivo_rechazo ? `
-                            <hr>
-                            <div class="alert alert-danger">
-                                <h6 class="fw-bold"><i class="bi bi-exclamation-triangle me-2"></i>Motivo de rechazo:</h6>
-                                <p class="mb-0">${a.motivo_rechazo}</p>
-                            </div>
+                        <hr>
+                        <div class="alert alert-danger">
+                            <h6 class="fw-bold"><i class="bi bi-exclamation-triangle me-2"></i>Motivo de rechazo:</h6>
+                            <p class="mb-0">${a.motivo_rechazo}</p>
+                        </div>
                         ` : ''}
                     `;
                     new bootstrap.Modal(document.getElementById('modalDetalle')).show();
@@ -432,7 +470,6 @@ include '../includes/header.php';
             });
     }
 
-    // Cargar actividades al iniciar
     cargarActividades();
 </script>
 

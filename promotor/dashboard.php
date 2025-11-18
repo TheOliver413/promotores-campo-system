@@ -151,11 +151,11 @@ $rutasPendientes = $stmt->fetch()['total'];
                             <div class="col-md-4">
                                 <h6 class="text-muted mb-2"><i class="bi bi-hourglass-split me-2"></i>Tiempo Transcurrido</h6>
                                 <p class="h5 mb-0" id="tiempoTranscurrido">00:00</p>
-                                <small class="text-muted">Horas trabajadas</small>
+                                <small class="text-muted">minutos</small>
                             </div>
                             <div class="col-md-4">
                                 <h6 class="text-muted mb-2"><i class="bi bi-briefcase me-2"></i>Proyecto</h6>
-                                <p class="h6 mb-0"><?php echo htmlspecialchars($jornadaActiva['nombre_proyecto'] ?? 'N/A'); ?></p>
+                                <p class="h6 mb-0"><?php echo htmlspecialchars($jornadaActiva['nombre_proyecto'] ?? 'Sin proyecto'); ?></p>
                             </div>
                         </div>
 
@@ -176,11 +176,9 @@ $rutasPendientes = $stmt->fetch()['total'];
                         const ahora = new Date();
                         const diff = ahora - inicio;
 
-                        const horas = Math.floor(diff / 3600000);
-                        const minutos = Math.floor((diff % 3600000) / 60000);
+                        const minutos = Math.floor(diff / 60000);
 
-                        document.getElementById('tiempoTranscurrido').textContent =
-                            `${horas.toString().padStart(2, '0')}:${minutos.toString().padStart(2, '0')}`;
+                        document.getElementById('tiempoTranscurrido').textContent = minutos;
                     }
 
                     actualizarTiempo();

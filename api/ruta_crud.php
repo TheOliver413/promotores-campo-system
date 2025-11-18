@@ -96,19 +96,47 @@ try {
         case 'get':
             $id = $_GET['id'] ?? 0;
 
-            $stmt = $db->prepare("SELECT rp.*, u.nombre_completo as nombre_promotor, p.nombre_proyecto FROM rutas_promotores rp INNER JOIN usuarios u ON rp.promotor_user_id = u.id INNER JOIN proyectos p ON rp.proyecto_id = p.id INNER JOIN supervisor_promotores sp ON rp.promotor_user_id = sp.promotor_id WHERE rp.id = ? AND sp.supervisor_id = ?");
-            $stmt->execute([$id, $_SESSION['user_id']]);
+            if ($userRole === 'Promotor') {
+                $stmt = $db->prepare("SELECT rp.*, u.nombre_completo as nombre_promotor, p.nombre_proyecto FROM rutas_promotores rp INNER JOIN usuarios u ON rp.promotor_user_id = u.id INNER JOIN proyectos p ON rp.proyecto_id = p.id WHERE rp.id = ? AND rp.promotor_user_id = ?");
+                $stmt->execute([$id, $_SESSION['user_id']]);
+            } else {
+                // Supervisor can view routes of their promoters
+                $stmt = $db->prepare("SELECT rp.*, u.nombre_completo as nombre_promotor, p.nombre_proyecto FROM rutas_promotores rp INNER JOIN usuarios u ON rp.promotor_user_id = u.id INNER JOIN proyectos p ON rp.proyecto_id = p.id INNER JOIN supervisor_promotores sp ON rp.promotor_user_id = sp.promotor_id WHERE rp.id = ? AND sp.supervisor_id = ?");
+                $stmt->execute([$id, $_SESSION['user_id']]);
+            }
+
             $ruta = $stmt->fetch(PDO::FETCH_ASSOC);
 
             if (!$ruta) {
-                echo json_encode(['success' => false, 'message' => 'Ruta no encontrada']);
+                echo json_encode(['success' => false, 'message' => 'Ruta no encontrada o no autorizada']);
                 exit;
             }
 
-            // Obtener puntos de la ruta
-            $stmt = $db->prepare("SELECT pr.*, uc.nombre_ubicacion, uc.cliente_id, c.nombre_empresa FROM puntos_ruta pr LEFT JOIN ubicaciones_clientes uc ON pr.ubicacion_cliente_id = uc.id LEFT JOIN clientes c ON uc.cliente_id = c.id WHERE pr.ruta_id = ? ORDER BY pr.orden ASC");
+            $stmt = $db->prepare("SELECT pr.*, uc.nombre_ubicacion, uc.direccion as ubicacion_direccion, uc.cliente_id, c.nombre_empresa FROM puntos_ruta pr LEFT JOIN ubicaciones_clientes uc ON pr.ubicacion_cliente_id = uc.id LEFT JOIN clientes c ON uc.cliente_id = c.id WHERE pr.ruta_id = ? ORDER BY pr.orden ASC");
             $stmt->execute([$id]);
-            $ruta['puntos'] = $stmt->fetchAll(PDO::FETCH_ASSOC);
+            $puntos = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+            $ruta['puntos'] = array_map(function ($p) {
+                return [
+                    'punto_id' => $p['id'],
+                    'id' => $p['id'],
+                    'ruta_punto_id' => $p['id'],
+                    'nombre' => $p['nombre'],
+                    'direccion' => $p['direccion'] ?? $p['ubicacion_direccion'] ?? 'Sin dirección',
+                    'latitud' => $p['latitud'],
+                    'longitud' => $p['longitud'],
+                    'lat' => $p['latitud'], // Alias for compatibility
+                    'lng' => $p['longitud'], // Alias for compatibility
+                    'lon' => $p['longitud'], // Alias for compatibility
+                    'orden' => $p['orden'],
+                    'visitado' => $p['visitado'] ?? 0,
+                    'completado' => $p['visitado'] ?? 0,
+                    'estado' => $p['estado'] ?? 'pendiente',
+                    'notas' => $p['notas'],
+                    'nombre_ubicacion' => $p['nombre_ubicacion'],
+                    'nombre_empresa' => $p['nombre_empresa']
+                ];
+            }, $puntos);
 
             echo json_encode(['success' => true, 'data' => $ruta]);
             break;
@@ -485,12 +513,15 @@ try {
             }
 
             echo json_encode(['success' => true, 'data' => ['cliente_id' => $result['cliente_id']]]);
+
             break;
 
         case 'iniciar_ruta':
             $input = file_get_contents('php://input');
             $data = json_decode($input, true);
             $rutaId = $data['ruta_id'] ?? 0;
+            $latitudInicio = $data['latitud_inicio'] ?? null;
+            $longitudInicio = $data['longitud_inicio'] ?? null;
 
             if (!$rutaId) {
                 echo json_encode(['success' => false, 'message' => 'ID de ruta requerido']);
@@ -512,9 +543,8 @@ try {
                 exit;
             }
 
-            // Actualizar estado a en_progreso
-            $stmt = $db->prepare("UPDATE rutas_promotores SET estado = 'en_progreso', fecha_inicio = NOW() WHERE id = ?");
-            $stmt->execute([$rutaId]);
+            $stmt = $db->prepare("UPDATE rutas_promotores SET estado = 'en_progreso', fecha_inicio_real = NOW(), hora_inicio_real = NOW(), latitud_inicio = ?, longitud_inicio = ? WHERE id = ?");
+            $stmt->execute([$latitudInicio, $longitudInicio, $rutaId]);
 
             // Auditoría
             $auditoriaModel->registrar(
@@ -553,7 +583,6 @@ try {
                 exit;
             }
 
-            // Actualizar estado a pausada
             $stmt = $db->prepare("UPDATE rutas_promotores SET estado = 'pausada' WHERE id = ?");
             $stmt->execute([$rutaId]);
 
@@ -584,17 +613,21 @@ try {
             $stmt->execute([$rutaId, $_SESSION['user_id']]);
             $ruta = $stmt->fetch(PDO::FETCH_ASSOC);
 
+            error_log("[v0] DEBUG reanudar_ruta - Route ID: $rutaId, Found: " . ($ruta ? 'Yes' : 'No') . ", Estado: " . ($ruta['estado'] ?? 'N/A'));
+
             if (!$ruta) {
                 echo json_encode(['success' => false, 'message' => 'Ruta no encontrada o no autorizada']);
                 exit;
             }
 
             if ($ruta['estado'] !== 'pausada') {
-                echo json_encode(['success' => false, 'message' => 'La ruta no está pausada']);
+                echo json_encode([
+                    'success' => false, 
+                    'message' => "La ruta no está pausada. Estado actual: {$ruta['estado']}"
+                ]);
                 exit;
             }
 
-            // Actualizar estado a en_progreso
             $stmt = $db->prepare("UPDATE rutas_promotores SET estado = 'en_progreso' WHERE id = ?");
             $stmt->execute([$rutaId]);
 
@@ -614,6 +647,8 @@ try {
             $input = file_get_contents('php://input');
             $data = json_decode($input, true);
             $rutaId = $data['ruta_id'] ?? 0;
+            $latitudFin = $data['latitud_fin'] ?? null;
+            $longitudFin = $data['longitud_fin'] ?? null;
 
             if (!$rutaId) {
                 echo json_encode(['success' => false, 'message' => 'ID de ruta requerido']);
@@ -621,7 +656,7 @@ try {
             }
 
             // Verificar que la ruta pertenece al promotor
-            $stmt = $db->prepare("SELECT estado FROM rutas_promotores WHERE id = ? AND promotor_user_id = ?");
+            $stmt = $db->prepare("SELECT estado, fecha_inicio_real FROM rutas_promotores WHERE id = ? AND promotor_user_id = ?");
             $stmt->execute([$rutaId, $_SESSION['user_id']]);
             $ruta = $stmt->fetch(PDO::FETCH_ASSOC);
 
@@ -635,9 +670,16 @@ try {
                 exit;
             }
 
-            // Actualizar estado a completada
-            $stmt = $db->prepare("UPDATE rutas_promotores SET estado = 'completada', fecha_fin = NOW() WHERE id = ?");
-            $stmt->execute([$rutaId]);
+            $duracionRealMinutos = null;
+            if ($ruta['fecha_inicio_real']) {
+                $fechaInicio = new DateTime($ruta['fecha_inicio_real']);
+                $fechaFin = new DateTime();
+                $intervalo = $fechaInicio->diff($fechaFin);
+                $duracionRealMinutos = ($intervalo->days * 24 * 60) + ($intervalo->h * 60) + $intervalo->i;
+            }
+
+            $stmt = $db->prepare("UPDATE rutas_promotores SET estado = 'completada', fecha_fin_real = NOW(), hora_fin_real = NOW(), latitud_fin = ?, longitud_fin = ?, duracion_real_minutos = ? WHERE id = ?");
+            $stmt->execute([$latitudFin, $longitudFin, $duracionRealMinutos, $rutaId]);
 
             // Auditoría
             $auditoriaModel->registrar(

@@ -98,11 +98,13 @@ class Jornada
     public function getJornadaActiva($promotorId)
     {
         $stmt = $this->db->prepare("
-            SELECT * FROM jornadas 
-            WHERE promotor_user_id = ? 
-            AND fecha_jornada = CURDATE() 
-            AND check_out_time IS NULL
-            ORDER BY check_in_time DESC 
+            SELECT j.*, p.nombre_proyecto 
+            FROM jornadas j 
+            LEFT JOIN proyectos p ON j.proyecto_id = p.id 
+            WHERE j.promotor_user_id = ? 
+            AND j.fecha_jornada = CURDATE() 
+            AND j.check_out_time IS NULL
+            ORDER BY j.check_in_time DESC 
             LIMIT 1
         ");
         $stmt->execute([$promotorId]);

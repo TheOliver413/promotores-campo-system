@@ -299,7 +299,7 @@ require_once __DIR__ . '/../config/session.php';
                                     <i class="bi bi-building me-1"></i> Clientes
                                 </a>
                             </li>
-                            <li class="nav-item dropdown">
+                            <!-- <li class="nav-item dropdown">
                                 <a class="nav-link dropdown-toggle" href="#" data-bs-toggle="dropdown">
                                     <i class="bi bi-grid me-1"></i> Catálogos
                                 </a>
@@ -307,7 +307,7 @@ require_once __DIR__ . '/../config/session.php';
                                     <li><a class="dropdown-item" href="/promotores-campo-system/admin/roles.php"><i class="bi bi-shield-check me-2"></i> Roles</a></li>
                                     <li><a class="dropdown-item" href="/promotores-campo-system/admin/catalogos.php"><i class="bi bi-list-check me-2"></i> Tipos de Actividad</a></li>
                                 </ul>
-                            </li>
+                            </li> -->
                             <li class="nav-item">
                                 <a class="nav-link <?php echo $currentPage === 'auditoria.php' ? 'active' : ''; ?>" href="/promotores-campo-system/admin/auditoria.php">
                                     <i class="bi bi-file-text me-1"></i> Auditoría
@@ -323,6 +323,11 @@ require_once __DIR__ . '/../config/session.php';
                             <li class="nav-item">
                                 <a class="nav-link <?php echo $currentPage === 'promotores.php' ? 'active' : ''; ?>" href="/promotores-campo-system/supervisor/promotores.php">
                                     <i class="bi bi-people me-1"></i> Promotores
+                                </a>
+                            </li>
+                            <li class="nav-item">
+                                <a class="nav-link <?php echo $currentPage === 'monitoreo.php' ? 'active' : ''; ?>" href="/promotores-campo-system/supervisor/monitoreo.php">
+                                    <i class="bi bi-binoculars me-1"></i> Monitoreo
                                 </a>
                             </li>
                             <li class="nav-item">
@@ -350,6 +355,16 @@ require_once __DIR__ . '/../config/session.php';
                             <li class="nav-item">
                                 <a class="nav-link <?php echo $currentPage === 'dashboard.php' ? 'active' : ''; ?>" href="/promotores-campo-system/promotor/dashboard.php">
                                     <i class="bi bi-calendar-check me-1"></i> Mi Jornada
+                                </a>
+                            </li>
+                            <li class="nav-item">
+                                <a class="nav-link <?php echo $currentPage === 'jornada.php' ? 'active' : ''; ?>" href="/promotores-campo-system/promotor/jornada.php">
+                                    <i class="bi bi-hourglass-split me-1"></i> Jornada
+                                </a>
+                            </li>
+                            <li class="nav-item">
+                                <a class="nav-link <?php echo $currentPage === 'actividades.php' ? 'active' : ''; ?>" href="/promotores-campo-system/promotor/actividades.php">
+                                    <i class="bi bi-star me-1"></i> Actividades
                                 </a>
                             </li>
                             <li class="nav-item">

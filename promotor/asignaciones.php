@@ -555,7 +555,7 @@ include '../includes/header.php';
     function mostrarRuta(rutaId) {
         showLoading();
 
-        fetch(`../api/ruta_crud.php?action=detail&id=${rutaId}`)
+        fetch(`../api/ruta_crud.php?action=get&id=${rutaId}`)
             .then(response => {
                 if (!response.ok) {
                     throw new Error(`HTTP error! status: ${response.status}`);
@@ -570,14 +570,13 @@ include '../includes/header.php';
                 return response.json();
             })
             .then(data => {
-                console.log('[v0] Route data received:', data);
                 hideLoading();
 
-                if (data.success && data.ruta) {
-                    rutaActual = data.ruta;
+                if (data.success && data.data) {
+                    rutaActual = data.data;
                     document.getElementById('mapEmptyState').style.display = 'none';
-                    dibujarRuta(data.ruta);
-                    mostrarDetalles(data.ruta);
+                    dibujarRuta(data.data);
+                    mostrarDetalles(data.data);
                     actualizarControlesRuta();
                 } else {
                     if (data.message && data.message.includes('no autorizado')) {
@@ -890,13 +889,13 @@ include '../includes/header.php';
         marcadores = [];
         routeCoordinates = null;
 
-        if (!ruta.puntos_ruta || ruta.puntos_ruta.length === 0) {
+        if (!ruta.puntos || ruta.puntos.length === 0) {
             showToast('Esta ruta no tiene puntos definidos', 'warning');
             return;
         }
 
         const bounds = [];
-        const puntos = ruta.puntos_ruta;
+        const puntos = ruta.puntos;
 
         if (ubicacionActual) {
             bounds.push([ubicacionActual.lat, ubicacionActual.lng]);
@@ -1103,7 +1102,7 @@ include '../includes/header.php';
     }
 
     function mostrarDetalles(ruta) {
-        const puntos = ruta.puntos_ruta || [];
+        const puntos = ruta.puntos || [];
 
         let html = '<div class="list-group" id="sortable-puntos">';
         puntos.forEach((punto, index) => {
@@ -1153,8 +1152,8 @@ include '../includes/header.php';
                 handle: '.bi-grip-vertical',
                 ghostClass: 'sortable-ghost',
                 onEnd: function(evt) {
-                    const item = rutaActual.puntos_ruta.splice(evt.oldIndex, 1)[0];
-                    rutaActual.puntos_ruta.splice(evt.newIndex, 0, item);
+                    const item = rutaActual.puntos.splice(evt.oldIndex, 1)[0];
+                    rutaActual.puntos.splice(evt.newIndex, 0, item);
 
                     dibujarRuta(rutaActual);
                     mostrarDetalles(rutaActual);
@@ -1166,7 +1165,7 @@ include '../includes/header.php';
     }
 
     async function guardarOrdenPuntos() {
-        if (!rutaActual || !rutaActual.puntos_ruta) return;
+        if (!rutaActual || !rutaActual.puntos) return;
 
         try {
             const response = await fetch('../api/punto_ruta_crud.php', {
@@ -1177,7 +1176,7 @@ include '../includes/header.php';
                 body: JSON.stringify({
                     action: 'reordenar_puntos',
                     ruta_id: rutaActual.id || rutaActual.ruta_id,
-                    puntos: rutaActual.puntos_ruta.map((p, index) => ({
+                    puntos: rutaActual.puntos.map((p, index) => ({
                         id: p.punto_id || p.id || p.ruta_punto_id,
                         orden: index + 1
                     }))
@@ -1197,9 +1196,9 @@ include '../includes/header.php';
     }
 
     function verPuntoDetalle(index) {
-        if (!rutaActual || !rutaActual.puntos_ruta || !rutaActual.puntos_ruta[index]) return;
+        if (!rutaActual || !rutaActual.puntos || !rutaActual.puntos[index]) return;
 
-        const punto = rutaActual.puntos_ruta[index];
+        const punto = rutaActual.puntos[index];
         const lat = parseFloat(punto.latitud || punto.lat);
         const lng = parseFloat(punto.longitud || punto.lng || punto.lon);
 
@@ -1212,9 +1211,9 @@ include '../includes/header.php';
     }
 
     function gestionarPunto(index) {
-        if (!rutaActual || !rutaActual.puntos_ruta || !rutaActual.puntos_ruta[index]) return;
+        if (!rutaActual || !rutaActual.puntos || !rutaActual.puntos[index]) return;
 
-        const punto = rutaActual.puntos_ruta[index];
+        const punto = rutaActual.puntos[index];
 
         document.getElementById('punto_index').value = index;
         document.getElementById('modalPuntoTitulo').textContent = `Gestionar Punto ${index + 1}`;
@@ -1305,7 +1304,7 @@ include '../includes/header.php';
         const filesInput = document.getElementById('punto_evidencias');
         const files = filesInput.files;
 
-        if (!rutaActual || !rutaActual.puntos_ruta || !rutaActual.puntos_ruta[index]) {
+        if (!rutaActual || !rutaActual.puntos || !rutaActual.puntos[index]) {
             showToast('Error: Punto no encontrado', 'error');
             return;
         }
@@ -1314,7 +1313,7 @@ include '../includes/header.php';
         formData.append('action', 'actualizar_punto');
         formData.append('ruta_id', rutaActual.id || rutaActual.ruta_id);
         formData.append('punto_index', index);
-        formData.append('punto_id', rutaActual.puntos_ruta[index].punto_id || rutaActual.puntos_ruta[index].id || rutaActual.puntos_ruta[index].ruta_punto_id);
+        formData.append('punto_id', rutaActual.puntos[index].punto_id || rutaActual.puntos[index].id || rutaActual.puntos[index].ruta_punto_id);
         formData.append('estado', estado);
         formData.append('notas', notas);
 
@@ -1336,14 +1335,14 @@ include '../includes/header.php';
                 showToast('Punto actualizado exitosamente', 'success');
 
                 const puntoActualizado = result.punto_data;
-                rutaActual.puntos_ruta[index] = {
-                    ...rutaActual.puntos_ruta[index],
+                rutaActual.puntos[index] = {
+                    ...rutaActual.puntos[index],
                     ...puntoActualizado,
                     estado: estado,
                     notas: notas,
                     visitado: (estado !== 'pendiente'),
                     completado: (estado !== 'pendiente'),
-                    evidencias: puntoActualizado.evidencias || rutaActual.puntos_ruta[index].evidencias
+                    evidencias: puntoActualizado.evidencias || rutaActual.puntos[index].evidencias
                 };
 
                 dibujarRuta(rutaActual);

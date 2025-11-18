@@ -285,23 +285,23 @@ include '../includes/header.php';
 
         try {
             const response = await fetch(`../api/ruta_crud.php?action=geocode&direccion=${encodeURIComponent(direccion)}&pais=Colombia`);
-            const data = await response.json();
+            const result = await response.json();
 
-            if (data.success) {
-                document.getElementById('latitud').value = data.latitud;
-                document.getElementById('longitud').value = data.longitud;
+            if (result.success && result.data) {
+                document.getElementById('latitud').value = result.data.latitud;
+                document.getElementById('longitud').value = result.data.longitud;
 
                 if (mapModal) {
                     if (marker) {
                         mapModal.removeLayer(marker);
                     }
-                    marker = L.marker([data.latitud, data.longitud]).addTo(mapModal);
-                    mapModal.setView([data.latitud, data.longitud], 15);
+                    marker = L.marker([result.data.latitud, result.data.longitud]).addTo(mapModal);
+                    mapModal.setView([result.data.latitud, result.data.longitud], 15);
                 }
 
                 alert('Ubicación encontrada en el mapa');
             } else {
-                alert('No se pudo encontrar la dirección: ' + data.message);
+                alert('No se pudo encontrar la dirección' + (result.message ? ': ' + result.message : ''));
             }
         } catch (error) {
             console.error('Error al geocodificar:', error);
@@ -356,6 +356,15 @@ include '../includes/header.php';
                 if (!mapModal) {
                     mapModal = L.map('mapModal').setView([ubic.latitud, ubic.longitud], 15);
                     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(mapModal);
+
+                    mapModal.on('click', function(e) {
+                        if (marker) {
+                            mapModal.removeLayer(marker);
+                        }
+                        marker = L.marker(e.latlng).addTo(mapModal);
+                        document.getElementById('latitud').value = e.latlng.lat.toFixed(6);
+                        document.getElementById('longitud').value = e.latlng.lng.toFixed(6);
+                    });
                 } else {
                     mapModal.setView([ubic.latitud, ubic.longitud], 15);
                 }

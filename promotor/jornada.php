@@ -3,6 +3,7 @@ require_once '../config/session.php';
 require_once '../config/database.php';
 require_once '../db/Jornada.php';
 require_once '../db/User.php';
+require_once '../includes/auth_helpers.php';
 
 checkAuth();
 checkRole(['Promotor']);
@@ -10,10 +11,10 @@ checkRole(['Promotor']);
 $user_id = $_SESSION['user_id'];
 $db = getDB();
 
-// Obtener jornada activa del día
-$jornada_activa = Jornada::getJornadaActivaHoy($db, $user_id);
+$jornadaModel = new Jornada();
+$jornada_activa = $jornadaModel->getJornadaActivaHoy($user_id);
 $puede_checkin = !$jornada_activa;
-$puede_checkout = $jornada_activa && !$jornada_activa['check_out_hora'];
+$puede_checkout = $jornada_activa && !$jornada_activa['check_out_time'];
 
 $pageTitle = 'Mi Jornada';
 include '../includes/header.php';
@@ -30,8 +31,8 @@ include '../includes/header.php';
                     <?php if ($jornada_activa): ?>
                         <div class="alert alert-success">
                             <h6 class="alert-heading"><i class="bi bi-check-circle"></i> Jornada Activa</h6>
-                            <p class="mb-1"><strong>Check-in:</strong> <?= date('H:i', strtotime($jornada_activa['check_in_hora'])) ?></p>
-                            <p class="mb-0"><strong>Ubicación:</strong> <?= $jornada_activa['check_in_latitud'] ?>, <?= $jornada_activa['check_in_longitud'] ?></p>
+                            <p class="mb-1"><strong>Check-in:</strong> <?= date('H:i', strtotime($jornada_activa['check_in_time'])) ?></p>
+                            <p class="mb-0"><strong>Ubicación:</strong> <?= $jornada_activa['check_in_lat'] ?? 'N/A' ?>, <?= $jornada_activa['check_in_lon'] ?? 'N/A' ?></p>
                         </div>
 
                         <?php if ($jornada_activa['check_in_foto_url']): ?>
@@ -47,7 +48,7 @@ include '../includes/header.php';
                             </button>
                         <?php else: ?>
                             <div class="alert alert-info">
-                                <p class="mb-1"><strong>Check-out:</strong> <?= date('H:i', strtotime($jornada_activa['check_out_hora'])) ?></p>
+                                <p class="mb-1"><strong>Check-out:</strong> <?= date('H:i', strtotime($jornada_activa['check_out_time'])) ?></p>
                                 <p class="mb-0"><strong>Horas trabajadas:</strong> <?= $jornada_activa['horas_calculadas'] ?> hrs</p>
                             </div>
                         <?php endif; ?>
@@ -94,7 +95,6 @@ include '../includes/header.php';
     let coordenadas = null;
     let fotoBlob = null;
 
-    // Obtener ubicación al cargar
     if (navigator.geolocation) {
         navigator.geolocation.getCurrentPosition(
             position => {
@@ -117,7 +117,6 @@ include '../includes/header.php';
             return;
         }
 
-        // Solicitar foto
         document.getElementById('fotoInput').click();
         document.getElementById('fotoInput').onchange = function(e) {
             const file = e.target.files[0];
@@ -125,7 +124,6 @@ include '../includes/header.php';
 
             fotoBlob = file;
 
-            // Mostrar preview
             const reader = new FileReader();
             reader.onload = function(e) {
                 document.getElementById('fotoImg').src = e.target.result;
@@ -133,7 +131,6 @@ include '../includes/header.php';
             };
             reader.readAsDataURL(file);
 
-            // Confirmar check-in
             if (confirm('¿Confirmar check-in con esta foto?')) {
                 enviarCheckin();
             }
@@ -200,7 +197,6 @@ include '../includes/header.php';
             });
     }
 
-    // Cargar historial
     function cargarHistorial() {
         fetch('../api/jornada_crud.php?action=historial')
             .then(response => response.json())
@@ -211,13 +207,13 @@ include '../includes/header.php';
                     <div class="list-group-item">
                         <div class="d-flex justify-content-between align-items-center">
                             <div>
-                                <h6 class="mb-1">${j.fecha}</h6>
+                                <h6 class="mb-1">${j.fecha_jornada || 'Sin fecha'}</h6>
                                 <small class="text-muted">
-                                    ${j.check_in_hora} - ${j.check_out_hora || 'En curso'}
+                                    ${j.check_in_time ? new Date(j.check_in_time).toLocaleTimeString('es-ES', {hour: '2-digit', minute:'2-digit'}) : 'N/A'} - ${j.check_out_time ? new Date(j.check_out_time).toLocaleTimeString('es-ES', {hour: '2-digit', minute:'2-digit'}) : 'En curso'}
                                 </small>
                             </div>
                             <span class="badge bg-${j.estado_validacion === 'Aprobado' ? 'success' : j.estado_validacion === 'Rechazado' ? 'danger' : 'warning'}">
-                                ${j.estado_validacion}
+                                ${j.estado_validacion || 'Pendiente'}
                             </span>
                         </div>
                         ${j.horas_calculadas ? `<small class="text-muted">Horas: ${j.horas_calculadas}</small>` : ''}

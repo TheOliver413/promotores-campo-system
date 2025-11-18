@@ -103,7 +103,19 @@ try {
             checkRole(['Promotor']);
 
             $jornadas = $jornadaModel->getByPromotor($user_id, 10);
-            echo json_encode(['success' => true, 'jornadas' => $jornadas]);
+            $jornadasFormatted = array_map(function ($j) {
+                return [
+                    'id' => $j['id'] ?? null,
+                    'fecha_jornada' => $j['fecha_jornada'] ?? date('Y-m-d'),
+                    'check_in_time' => $j['check_in_time'] ?? null,
+                    'check_out_time' => $j['check_out_time'] ?? null,
+                    'horas_calculadas' => $j['horas_calculadas'] ?? 0,
+                    'estado_validacion' => $j['estado_validacion'] ?? 'Pendiente',
+                    'nombre_proyecto' => $j['nombre_proyecto'] ?? 'Sin proyecto'
+                ];
+            }, $jornadas);
+
+            echo json_encode(['success' => true, 'jornadas' => $jornadasFormatted]);
             break;
 
         case 'activa':
