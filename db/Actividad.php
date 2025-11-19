@@ -41,7 +41,8 @@ class Actividad
         $stmt = $this->db->prepare("
             SELECT a.*, ta.nombre as tipo_actividad_nombre,
                    u.nombre_completo as promotor_nombre,
-                   p.nombre_proyecto
+                   p.nombre_proyecto,
+                   a.notas as descripcion
             FROM actividades a 
             JOIN tipos_actividad ta ON a.tipo_actividad_id = ta.id 
             JOIN usuarios u ON a.promotor_user_id = u.id
@@ -56,7 +57,8 @@ class Actividad
     {
         $stmt = $this->db->prepare("
             SELECT a.*, ta.nombre as tipo_actividad_nombre,
-                   p.nombre_proyecto
+                   p.nombre_proyecto,
+                   a.notas as descripcion
             FROM actividades a 
             JOIN tipos_actividad ta ON a.tipo_actividad_id = ta.id 
             LEFT JOIN proyectos p ON a.proyecto_id = p.id
@@ -71,7 +73,8 @@ class Actividad
     public function getActividadesPendientes($supervisorId = null)
     {
         $sql = "SELECT a.*, u.nombre_completo as promotor_nombre, 
-                p.nombre_proyecto, ta.nombre as tipo_actividad_nombre 
+                p.nombre_proyecto, ta.nombre as tipo_actividad_nombre,
+                a.notas as descripcion
                 FROM actividades a 
                 JOIN usuarios u ON a.promotor_user_id = u.id 
                 LEFT JOIN proyectos p ON a.proyecto_id = p.id 

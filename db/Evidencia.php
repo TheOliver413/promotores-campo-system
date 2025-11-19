@@ -30,7 +30,15 @@ class Evidencia
     public function getByActividad($actividadId)
     {
         $stmt = $this->db->prepare("
-            SELECT * FROM evidencias 
+            SELECT 
+                id,
+                actividad_id,
+                tipo_archivo,
+                url_archivo as url,
+                nombre_archivo,
+                peso_kb,
+                fecha_carga
+            FROM evidencias 
             WHERE actividad_id = ? 
             ORDER BY fecha_carga DESC
         ");

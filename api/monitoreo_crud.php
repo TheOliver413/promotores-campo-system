@@ -88,7 +88,7 @@ try {
                 // Formatear progreso de ruta
                 if ($p['ruta_activa']) {
                     $progreso = $p['ruta_total'] > 0 ? round(($ruta_visitados / $p['ruta_total']) * 100) : 0;
-                    $p['ruta_progreso'] = "{$ruta_visitados}/{$p['ruta_total']} puntos ({$progreso}%)";
+                    $p['ruta_progreso'] = "Progreso: {$ruta_visitados}/{$p['ruta_total']} puntos ({$progreso}%)";
                     $rutasActivas++;
                 }
 
@@ -203,7 +203,7 @@ try {
             // Formatear progreso de ruta
             if ($promotor['ruta_activa']) {
                 $progreso = $promotor['ruta_total'] > 0 ? round(($ruta_visitados / $promotor['ruta_total']) * 100) : 0;
-                $promotor['ruta_progreso'] = "{$ruta_visitados}/{$promotor['ruta_total']} puntos ({$progreso}%)";
+                $promotor['ruta_progreso'] = "Progreso: {$ruta_visitados}/{$promotor['ruta_total']} puntos ({$progreso}%)";
             }
 
             // Obtener actividades de hoy

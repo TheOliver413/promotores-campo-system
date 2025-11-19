@@ -1309,6 +1309,11 @@ include '../includes/header.php';
             return;
         }
 
+        const btnGuardar = document.querySelector('#modalGestionarPunto .btn-primary');
+        const originalText = btnGuardar.innerHTML;
+        btnGuardar.disabled = true;
+        btnGuardar.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span>Guardando...';
+
         const formData = new FormData();
         formData.append('action', 'actualizar_punto');
         formData.append('ruta_id', rutaActual.id || rutaActual.ruta_id);
@@ -1354,6 +1359,10 @@ include '../includes/header.php';
             }
         } catch (error) {
             showToast('Error de conexión al guardar punto', 'error');
+            console.error('[v0] Error:', error);
+        } finally {
+            btnGuardar.disabled = false;
+            btnGuardar.innerHTML = originalText;
         }
     }
 

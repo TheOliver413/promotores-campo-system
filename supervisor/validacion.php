@@ -443,7 +443,7 @@ include '../includes/header.php';
                         <hr>
                         <h6><strong>Foto Check-in</strong></h6>
                         <img src="../${fotoUrl}" class="img-fluid rounded" style="max-height: 250px; width: 100%; object-fit: cover;" 
-                             onerror="this.onerror=null; this.src='/placeholder.svg?height=250&width=400'; this.alt='Imagen no disponible';">
+                             onerror="this.onerror=null; this.src='../assets/img/placeholder.png?height=250&width=400'; this.alt='Imagen no disponible';">
                     ` : ''}
                 </div>
                 <div class="col-md-6">
@@ -494,7 +494,6 @@ include '../includes/header.php';
             const desc = actividad.descripcion ?? 'Sin descripción';
             const lat = actividad.latitud ?? 'N/A';
             const long = actividad.longitud ?? 'N/A';
-            const tiempo = actividad.tiempo_minutos ?? 'N/A';
             const evidenciasCount = actividad.evidencias?.length ?? 0;
 
             body.innerHTML = `
@@ -507,7 +506,6 @@ include '../includes/header.php';
                 </div>
                 <div class="col-md-6">
                     <p><strong>Ubicación:</strong><br>${lat}, ${long}</p>
-                    <p><strong>Tiempo:</strong> ${tiempo} minutos</p>
                     ${evidenciasCount > 0 ? `<p><strong>Evidencias:</strong> ${evidenciasCount} archivo(s)</p>` : ''}
                 </div>
             </div>
@@ -519,7 +517,7 @@ include '../includes/header.php';
                         <div class="d-flex flex-wrap gap-2">
                             ${actividad.evidencias.map(e => `
                                 <img src="../${e.url_archivo}" class="img-thumbnail" style="max-width: 150px; max-height: 150px; object-fit: cover;" 
-                                     onerror="this.onerror=null; this.src='/placeholder.svg?height=150&width=150'; this.alt='Imagen no disponible';">
+                                     onerror="this.onerror=null; this.src='../assets/img/placeholder.png?height=150&width=150'; this.alt='Imagen no disponible';">
                             `).join('')}
                         </div>
                     </div>

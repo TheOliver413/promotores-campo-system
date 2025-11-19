@@ -4,6 +4,7 @@ require_once '../config/database.php';
 require_once '../includes/auth_helpers.php';
 require_once '../db/Jornada.php';
 require_once '../db/Auditoria.php';
+require_once '../db/RutaPromotor.php';
 
 header('Content-Type: application/json');
 checkAuth();
@@ -13,6 +14,7 @@ $action = $_GET['action'] ?? $_POST['action'] ?? '';
 
 $jornadaModel = new Jornada();
 $auditoriaModel = new Auditoria();
+$rutaModel = new RutaPromotor();
 
 try {
     switch ($action) {
@@ -27,17 +29,29 @@ try {
                 throw new Exception('Ubicación GPS requerida');
             }
 
+            if (!$proyectoId) {
+                throw new Exception('Proyecto requerido');
+            }
+
             // Verificar que no haya jornada activa
             $jornadaActiva = $jornadaModel->getJornadaActivaHoy($user_id);
             if ($jornadaActiva) {
                 throw new Exception('Ya existe una jornada activa');
             }
 
-            // Manejar foto
             $fotoUrl = null;
             if (isset($_FILES['foto']) && $_FILES['foto']['error'] === 0) {
-                $fotoUrl = '/uploads/checkin_' . time() . '_' . $user_id . '.jpg';
-                // Simular guardado de archivo
+                $uploadDir = __DIR__ . '/../uploads/checkin/';
+                if (!is_dir($uploadDir)) {
+                    mkdir($uploadDir, 0755, true);
+                }
+
+                $fileName = uniqid() . '_' . $user_id . '_' . basename($_FILES['foto']['name']);
+                $targetPath = $uploadDir . $fileName;
+
+                if (move_uploaded_file($_FILES['foto']['tmp_name'], $targetPath)) {
+                    $fotoUrl = '../uploads/checkin/' . $fileName;
+                }
             }
 
             $jornadaId = $jornadaModel->create([
@@ -53,7 +67,7 @@ try {
                 'Check-in',
                 'jornadas',
                 $jornadaId,
-                ['latitud' => $latitud, 'longitud' => $longitud]
+                ['latitud' => $latitud, 'longitud' => $longitud, 'proyecto_id' => $proyectoId]
             );
 
             echo json_encode(['success' => true, 'jornada_id' => $jornadaId]);

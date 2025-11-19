@@ -49,6 +49,44 @@ class RutaPromotor
         return $stmt->fetchAll();
     }
 
+    public function getRutaActiva($promotorId)
+    {
+        $stmt = $this->db->prepare("
+            SELECT 
+                r.id as ruta_promotor_id,
+                r.id,
+                r.nombre_ruta,
+                r.fecha_planificada,
+                r.puntos_ruta,
+                r.estado,
+                p.nombre_proyecto,
+                p.id as proyecto_id
+            FROM rutas_promotores r 
+            JOIN proyectos p ON r.proyecto_id = p.id 
+            WHERE r.promotor_user_id = ? 
+            AND r.estado IN ('en_progreso', 'pausada')
+            ORDER BY r.fecha_planificada DESC
+            LIMIT 1
+        ");
+        $stmt->execute([$promotorId]);
+        return $stmt->fetch();
+    }
+
+    public function getAllProyectos($promotorId)
+    {
+        $stmt = $this->db->prepare("
+            SELECT DISTINCT
+                p.id,
+                p.nombre_proyecto
+            FROM rutas_promotores r
+            JOIN proyectos p ON r.proyecto_id = p.id
+            WHERE r.promotor_user_id = ?
+            ORDER BY p.nombre_proyecto ASC
+        ");
+        $stmt->execute([$promotorId]);
+        return $stmt->fetchAll();
+    }
+
     public function getById($id)
     {
         $stmt = $this->db->prepare("SELECT * FROM rutas_promotores WHERE id = ?");

@@ -16,11 +16,10 @@ $proyectoModel = new Proyecto();
 $auditoriaModel = new Auditoria();
 
 try {
-    // Get POST data
+    // Datos principales
     $check_in_lat = $_POST['check_in_lat'] ?? null;
     $check_in_lon = $_POST['check_in_lon'] ?? null;
     $proyecto_id = $_POST['proyecto_id'] ?? null;
-    $check_in_foto_url = $_POST['check_in_foto_url'] ?? null;
 
     if (!$check_in_lat || !$check_in_lon) {
         throw new Exception('Ubicación GPS requerida');
@@ -35,45 +34,67 @@ try {
         throw new Exception('Proyecto no encontrado');
     }
 
-    // Decodificar configuraciones JSON
+    // Validaciones del proyecto
     $configuraciones = json_decode($proyecto['configuraciones'] ?? '{}', true);
 
-    // Validar foto obligatoria
-    if (isset($configuraciones['checkin_foto_obligatoria']) && $configuraciones['checkin_foto_obligatoria'] === true) {
-        if (empty($check_in_foto_url)) {
+    // Foto obligatoria
+    if (!empty($configuraciones['checkin_foto_obligatoria'])) {
+        if (!isset($_FILES['foto']) || $_FILES['foto']['error'] !== 0) {
             throw new Exception('La foto de check-in es obligatoria para este proyecto');
         }
     }
 
-    // Validar check-in en fin de semana
-    $diaSemana = date('N'); // 1 (lunes) a 7 (domingo)
-    if (isset($configuraciones['permitir_checkin_findesemana']) && $configuraciones['permitir_checkin_findesemana'] === false) {
-        if ($diaSemana >= 6) { // 6=sábado, 7=domingo
-            throw new Exception('No se permite check-in en fin de semana para este proyecto');
-        }
+    // No fines de semana
+    $dia = date('N');
+    if (
+        isset($configuraciones['permitir_checkin_findesemana'])
+        && $configuraciones['permitir_checkin_findesemana'] === false
+        && $dia >= 6
+    ) {
+        throw new Exception('No se permite check-in en fin de semana');
     }
-    // </CHANGE>
 
-    // Verificar que no haya jornada activa
+    // Validar jornada activa
     $jornadaActiva = $jornadaModel->getJornadaActiva($user_id);
     if ($jornadaActiva) {
-        throw new Exception('Ya tienes una jornada activa. Debes hacer check-out primero.');
+        throw new Exception('Ya tienes una jornada activa. Haz check-out primero.');
     }
 
-    // Crear jornada
+    $fotoUrl = null;
+
+    if (isset($_FILES['foto']) && $_FILES['foto']['error'] === 0) {
+        $uploadDir = __DIR__ . '/../uploads/checkin/';
+
+        if (!is_dir($uploadDir)) {
+            mkdir($uploadDir, 0755, true);
+        }
+
+        $extension = pathinfo($_FILES['foto']['name'], PATHINFO_EXTENSION);
+        $fileName = 'checkin_' . time() . '_' . $user_id . '.' . $extension;
+
+        $targetPath = $uploadDir . $fileName;
+
+        if (!move_uploaded_file($_FILES['foto']['tmp_name'], $targetPath)) {
+            throw new Exception('No se pudo guardar la foto del check-in');
+        }
+
+        $fotoUrl = '../uploads/checkin/' . $fileName; // ruta relativa para la BD
+    }
+
+    // Guardar la jornada
     $jornadaId = $jornadaModel->create([
         'promotor_user_id' => $user_id,
         'proyecto_id' => $proyecto_id,
         'check_in_lat' => $check_in_lat,
         'check_in_lon' => $check_in_lon,
-        'check_in_foto_url' => $check_in_foto_url
+        'check_in_foto_url' => $fotoUrl
     ]);
 
     if (!$jornadaId) {
         throw new Exception('Error al crear la jornada');
     }
 
-    // Registrar auditoría
+    // Auditoría
     $auditoriaModel->registrar(
         $user_id,
         'Check-in',
@@ -85,7 +106,8 @@ try {
     echo json_encode([
         'success' => true,
         'message' => 'Check-in realizado exitosamente',
-        'jornada_id' => $jornadaId
+        'jornada_id' => $jornadaId,
+        'foto_url' => $fotoUrl
     ]);
 } catch (Exception $e) {
     echo json_encode([

@@ -4,6 +4,7 @@ require_once '../config/database.php';
 require_once '../db/Actividad.php';
 require_once '../db/TipoActividad.php';
 require_once '../db/Jornada.php';
+require_once '../db/RutaPromotor.php';
 require_once '../includes/auth_helpers.php';
 
 checkAuth();
@@ -17,6 +18,11 @@ $jornadaActiva = $jornadaModel->getJornadaActiva($user_id);
 
 $tipoActividadModel = new TipoActividad();
 $tipos_actividad = $tipoActividadModel->getAll();
+
+$rutaModel = new RutaPromotor();
+$rutaActiva = $rutaModel->getRutaActiva($user_id);
+
+$proyectos = $rutaModel->getAllProyectos($user_id);
 
 $pageTitle = 'Registro de Actividades';
 include '../includes/header.php';
@@ -150,7 +156,7 @@ include '../includes/header.php';
                             <select class="form-select" name="tipo_actividad_id" required>
                                 <option value="">Seleccionar...</option>
                                 <?php foreach ($tipos_actividad as $tipo): ?>
-                                    <option value="<?= $tipo['tipo_actividad_id'] ?>">
+                                    <option value="<?= $tipo['id'] ?>">
                                         <?= htmlspecialchars($tipo['nombre']) ?>
                                     </option>
                                 <?php endforeach; ?>
@@ -163,10 +169,52 @@ include '../includes/header.php';
                         </div>
                     </div>
 
+                    <!-- Added project selector field -->
+                    <div class="mb-3">
+                        <label class="form-label fw-bold">Proyecto *</label>
+                        <select class="form-select" name="proyecto_id" id="proyectoSelect">
+                            <option value="">Seleccionar proyecto...</option>
+                            <?php if ($jornadaActiva): ?>
+                                <?php if ($rutaActiva): ?>
+                                    <option value="<?= $rutaActiva['proyecto_id'] ?>" selected>
+                                        <?= htmlspecialchars($rutaActiva['nombre_proyecto']) ?> (Ruta activa)
+                                    </option>
+                                <?php endif; ?>
+                                <?php foreach ($proyectos as $proyecto): ?>
+                                    <?php if (!$rutaActiva || $proyecto['id'] != $rutaActiva['proyecto_id']): ?>
+                                        <option value="<?= $proyecto['id'] ?>">
+                                            <?= htmlspecialchars($proyecto['nombre_proyecto']) ?>
+                                        </option>
+                                    <?php endif; ?>
+                                <?php endforeach; ?>
+                            <?php endif; ?>
+                        </select>
+                        <small class="text-muted d-block mt-1">
+                            <i class="bi bi-info-circle me-1"></i>
+                            Si tienes una ruta activa, se selecciona automáticamente
+                        </small>
+                    </div>
+
                     <div class="mb-3">
                         <label class="form-label fw-bold">Descripción *</label>
                         <textarea class="form-control" name="descripcion" rows="4" required
                             placeholder="Describe la actividad realizada..."></textarea>
+                    </div>
+
+                    <!-- Added state selector for consistency with asignaciones.php -->
+                    <div class="mb-3">
+                        <label class="form-label fw-bold">Estado de Visita</label>
+                        <select class="form-select" name="estado_visita">
+                            <option value="pendiente">Pendiente</option>
+                            <option value="visitado" selected>Visitado</option>
+                            <option value="venta">Venta Realizada</option>
+                            <option value="cotizacion">Cotización</option>
+                            <option value="no_efectiva">Visita No Efectiva</option>
+                        </select>
+                        <small class="text-muted d-block mt-1">
+                            <i class="bi bi-info-circle me-1"></i>
+                            Indica el resultado de la actividad realizada
+                        </small>
                     </div>
 
                     <div class="mb-3">

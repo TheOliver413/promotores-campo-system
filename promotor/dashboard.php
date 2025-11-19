@@ -379,7 +379,7 @@ $rutasPendientes = $stmt->fetch()['total'];
 
             const photoFile = document.getElementById('check_in_foto').files[0];
             if (photoFile) {
-                formData.append('check_in_foto_url', '/uploads/checkin_' + Date.now() + '.jpg');
+                formData.append('foto', photoFile);
             }
 
             const response = await fetch('/promotores-campo-system/api/checkin.php', {

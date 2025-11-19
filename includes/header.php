@@ -304,15 +304,15 @@ require_once __DIR__ . '/../config/session.php';
                                     <i class="bi bi-file-text me-1"></i> Auditoría
                                 </a>
                             </li>
-                            <!-- <li class="nav-item dropdown">
+                            <li class="nav-item dropdown">
                                 <a class="nav-link dropdown-toggle" href="#" data-bs-toggle="dropdown">
                                     <i class="bi bi-grid me-1"></i> Catálogos
                                 </a>
                                 <ul class="dropdown-menu">
-                                    <li><a class="dropdown-item" href="/promotores-campo-system/admin/roles.php"><i class="bi bi-shield-check me-2"></i> Roles</a></li>
+                                    <!-- <li><a class="dropdown-item" href="/promotores-campo-system/admin/roles.php"><i class="bi bi-shield-check me-2"></i> Roles</a></li> -->
                                     <li><a class="dropdown-item" href="/promotores-campo-system/admin/catalogos.php"><i class="bi bi-list-check me-2"></i> Tipos de Actividad</a></li>
                                 </ul>
-                            </li> -->
+                            </li>
                         <?php elseif ($roleName === 'Supervisor'): ?>
                             <li class="nav-item">
                                 <a class="nav-link <?php echo $currentPage === 'dashboard.php' ? 'active' : ''; ?>" href="/promotores-campo-system/supervisor/dashboard.php">

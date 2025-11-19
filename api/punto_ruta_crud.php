@@ -58,6 +58,7 @@ try {
             // Find punto by ID or index
             $puntoEncontrado = false;
             $puntoActualIndex = -1;
+            $puntoData = null;
 
             if ($puntoId > 0) {
                 $stmt = $db->prepare("SELECT * FROM puntos_ruta WHERE id = ? AND ruta_id = ?");
@@ -73,9 +74,10 @@ try {
                 $puntoActualIndex = $puntoIndex;
 
                 // Get punto_id from puntos_ruta table
-                $stmt = $db->prepare("SELECT id FROM puntos_ruta WHERE ruta_id = ? AND orden = ?");
+                $stmt = $db->prepare("SELECT * FROM puntos_ruta WHERE ruta_id = ? AND orden = ?");
                 $stmt->execute([$rutaId, $puntoIndex + 1]);
-                $puntoId = $stmt->fetchColumn();
+                $puntoData = $stmt->fetch(PDO::FETCH_ASSOC);
+                $puntoId = $puntoData ? $puntoData['id'] : null;
             }
 
             if (!$puntoEncontrado || $puntoActualIndex < 0) {
@@ -100,7 +102,7 @@ try {
 
                         if (move_uploaded_file($tmpName, $targetPath)) {
                             $evidencias[] = [
-                                'url' => 'uploads/evidencias/' . $fileName,
+                                'url' => '../uploads/evidencias/' . $fileName,
                                 'tipo' => $_FILES['evidencias']['type'][$key],
                                 'fecha' => date('Y-m-d H:i:s')
                             ];
@@ -160,6 +162,66 @@ try {
 
                         $stmt = $db->prepare("UPDATE rutas_promotores SET puntos_ruta = ? WHERE id = ?");
                         $stmt->execute([json_encode($puntosRuta), $rutaId]);
+                    }
+
+                    if ($estado !== 'pendiente') {
+                        require_once '../db/Actividad.php';
+                        require_once '../db/Jornada.php';
+                        require_once '../db/Evidencia.php';
+                        require_once '../db/RutaPromotor.php';
+
+                        $actividadModel = new Actividad();
+                        $jornadaModel = new Jornada();
+                        $evidenciaModel = new Evidencia();
+                        $rutaModel = new RutaPromotor();
+
+                        // Get active jornada
+                        $jornadaActiva = $jornadaModel->getJornadaActiva($_SESSION['user_id']);
+
+                        $stmt = $db->prepare("SELECT proyecto_id FROM rutas_promotores WHERE id = ?");
+                        $stmt->execute([$rutaId]);
+                        $proyectoId = $stmt->fetchColumn();
+
+                        // Get punto coordinates
+                        $latitud = $puntoData['latitud'] ?? ($puntosRuta[$puntoActualIndex]['latitud'] ?? null);
+                        $longitud = $puntoData['longitud'] ?? ($puntosRuta[$puntoActualIndex]['longitud'] ?? null);
+                        $nombrePunto = $puntoData['nombre'] ?? ($puntosRuta[$puntoActualIndex]['nombre'] ?? 'Punto de ruta');
+
+                        // Get tipo_actividad_id for "Visita" or similar
+                        $stmt = $db->prepare("SELECT id FROM tipos_actividad WHERE nombre LIKE '%visita%' OR nombre LIKE '%punto%' LIMIT 1");
+                        $stmt->execute();
+                        $tipoActividadId = $stmt->fetchColumn();
+
+                        // If no matching activity type, use the first one
+                        if (!$tipoActividadId) {
+                            $stmt = $db->prepare("SELECT id FROM tipos_actividad ORDER BY id ASC LIMIT 1");
+                            $stmt->execute();
+                            $tipoActividadId = $stmt->fetchColumn();
+                        }
+
+                        if ($latitud && $longitud && $tipoActividadId && $proyectoId) {
+                            $actividadId = $actividadModel->create([
+                                'jornada_id' => $jornadaActiva ? $jornadaActiva['id'] : null,
+                                'promotor_user_id' => $_SESSION['user_id'],
+                                'proyecto_id' => $proyectoId,
+                                'tipo_actividad_id' => $tipoActividadId,
+                                'latitud' => $latitud,
+                                'longitud' => $longitud,
+                                'notas' => "Visita a: {$nombrePunto}. Estado: {$estado}. " . ($notas ? "Notas: {$notas}" : '')
+                            ]);
+
+                            // Link evidencias to activity if any
+                            if ($actividadId && !empty($evidencias)) {
+                                foreach ($evidencias as $evidencia) {
+                                    $evidenciaModel->create($actividadId, [
+                                        'tipo_archivo' => $evidencia['tipo'],
+                                        'url_archivo' => $evidencia['url'],
+                                        'nombre_archivo' => basename($evidencia['url']),
+                                        'peso_kb' => 0
+                                    ]);
+                                }
+                            }
+                        }
                     }
 
                     $db->commit();

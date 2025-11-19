@@ -149,7 +149,6 @@ try {
                        ta.nombre as tipo_actividad,
                        COALESCE(a.latitud, 'N/A') as latitud,
                        COALESCE(a.longitud, 'N/A') as longitud,
-                       COALESCE(a.tiempo_minutos, 0) as tiempo_minutos,
                        COALESCE(a.notas, '') as descripcion
                 FROM actividades a 
                 INNER JOIN usuarios u ON a.promotor_user_id = u.id 

@@ -425,6 +425,7 @@ include '../includes/header.php';
                             </div>
                             <div class="card-body">
                                 ${p.actividades_hoy && p.actividades_hoy.length > 0 ? `
+
                                     <div class="table-responsive">
                                         <table class="table table-sm">
                                             <thead>

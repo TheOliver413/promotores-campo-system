@@ -2,7 +2,7 @@
 require_once '../config/session.php';
 require_once '../config/database.php';
 require_once '../db/Jornada.php';
-require_once '../db/User.php';
+require_once '../db/Proyecto.php';
 require_once '../includes/auth_helpers.php';
 
 checkAuth();
@@ -12,9 +12,13 @@ $user_id = $_SESSION['user_id'];
 $db = getDB();
 
 $jornadaModel = new Jornada();
+$proyectoModel = new Proyecto();
+
 $jornada_activa = $jornadaModel->getJornadaActivaHoy($user_id);
 $puede_checkin = !$jornada_activa;
 $puede_checkout = $jornada_activa && !$jornada_activa['check_out_time'];
+
+$proyectos_asignados = $proyectoModel->getByPromotor($user_id);
 
 $pageTitle = 'Mi Jornada';
 include '../includes/header.php';
@@ -32,7 +36,7 @@ include '../includes/header.php';
                         <div class="alert alert-success">
                             <h6 class="alert-heading"><i class="bi bi-check-circle"></i> Jornada Activa</h6>
                             <p class="mb-1"><strong>Check-in:</strong> <?= date('H:i', strtotime($jornada_activa['check_in_time'])) ?></p>
-                            <p class="mb-0"><strong>Ubicación:</strong> <?= $jornada_activa['check_in_lat'] ?? 'N/A' ?>, <?= $jornada_activa['check_in_lon'] ?? 'N/A' ?></p>
+                            <p class="mb-0"><strong>Proyecto:</strong> <?= htmlspecialchars($jornada_activa['nombre_proyecto'] ?? 'N/A') ?></p>
                         </div>
 
                         <?php if ($jornada_activa['check_in_foto_url']): ?>
@@ -57,6 +61,23 @@ include '../includes/header.php';
                             <i class="bi bi-exclamation-triangle"></i> No hay jornada activa. Realiza tu check-in para comenzar.
                         </div>
 
+                        <!-- Agregar selector de proyecto antes del check-in -->
+                        <?php if (!empty($proyectos_asignados)): ?>
+                            <div class="mb-3">
+                                <label for="proyecto_id" class="form-label fw-bold">
+                                    <i class="bi bi-briefcase me-2"></i>Seleccionar Proyecto
+                                </label>
+                                <select class="form-select" id="proyecto_id" required>
+                                    <option value="">-- Seleccione un proyecto --</option>
+                                    <?php foreach ($proyectos_asignados as $proyecto): ?>
+                                        <option value="<?= $proyecto['id'] ?>">
+                                            <?= htmlspecialchars($proyecto['nombre_proyecto']) ?>
+                                        </option>
+                                    <?php endforeach; ?>
+                                </select>
+                            </div>
+                        <?php endif; ?>
+
                         <button type="button" class="btn btn-success btn-lg w-100" onclick="realizarCheckin()">
                             <i class="bi bi-box-arrow-in-right"></i> Realizar Check-in
                         </button>
@@ -64,7 +85,7 @@ include '../includes/header.php';
 
                     <!-- Preview de foto -->
                     <div id="fotoPreview" class="mt-3 text-center" style="display: none;">
-                        <img id="fotoImg" src="/placeholder.svg" alt="Preview" class="img-fluid rounded" style="max-height: 200px;">
+                        <img id="fotoImg" src="../assets/img/placeholder.png" alt="Preview" class="img-fluid rounded" style="max-height: 200px;">
                     </div>
 
                     <!-- Input oculto para captura de foto -->
@@ -112,6 +133,12 @@ include '../includes/header.php';
     }
 
     function realizarCheckin() {
+        const proyectoId = document.getElementById('proyecto_id')?.value;
+        if (!proyectoId) {
+            alert('Por favor selecciona un proyecto');
+            return;
+        }
+
         if (!coordenadas) {
             alert('Esperando ubicación GPS...');
             return;
@@ -138,11 +165,16 @@ include '../includes/header.php';
     }
 
     function enviarCheckin() {
+        const proyectoId = document.getElementById('proyecto_id')?.value;
+
         const formData = new FormData();
         formData.append('action', 'checkin');
+        formData.append('proyecto_id', proyectoId);
         formData.append('latitud', coordenadas.latitud);
         formData.append('longitud', coordenadas.longitud);
-        formData.append('foto', fotoBlob);
+        if (fotoBlob) {
+            formData.append('foto', fotoBlob);
+        }
 
         fetch('../api/jornada_crud.php', {
                 method: 'POST',
@@ -171,16 +203,14 @@ include '../includes/header.php';
 
         if (!confirm('¿Confirmar check-out?')) return;
 
+        const formData = new FormData();
+        formData.append('action', 'checkout');
+        formData.append('latitud', coordenadas.latitud);
+        formData.append('longitud', coordenadas.longitud);
+
         fetch('../api/jornada_crud.php', {
                 method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json'
-                },
-                body: JSON.stringify({
-                    action: 'checkout',
-                    latitud: coordenadas.latitud,
-                    longitud: coordenadas.longitud
-                })
+                body: formData
             })
             .then(response => response.json())
             .then(data => {
