@@ -156,6 +156,9 @@ include '../includes/header.php';
             </div>
             <div class="modal-body">
                 <input type="hidden" id="punto_index">
+                <input type="hidden" id="punto_nombre_hidden">
+                <input type="hidden" id="punto_direccion_hidden">
+                <input type="hidden" id="punto_id_hidden"> <!-- Added hidden input for punto_id -->
 
                 <!-- Point Information -->
                 <div class="card mb-3">
@@ -171,6 +174,17 @@ include '../includes/header.php';
                                 <p id="punto_info_direccion" class="mb-0 text-muted"></p>
                             </div>
                         </div>
+                    </div>
+                </div>
+
+                <!-- Added new button to create acta de visita -->
+                <div class="card mb-3 border-success">
+                    <div class="card-body">
+                        <h6 class="text-success mb-3"><i class="bi bi-file-earmark-text me-2"></i>Acta de Visita</h6>
+                        <p class="text-muted small mb-3">Registra información del receptor y evidencias de la visita</p>
+                        <button type="button" class="btn btn-success w-100" onclick="abrirActaVisita()">
+                            <i class="bi bi-plus-circle me-2"></i>Registrar Acta de Visita
+                        </button>
                     </div>
                 </div>
 
@@ -386,6 +400,7 @@ include '../includes/header.php';
     let marcadoresUbicacionLayer; // Added layer for current location marker
     let marcadores = [];
     let rutaActual = null;
+    let puntoSeleccionado = null; // Added to store the currently selected point for modal
     let polyline = null;
     let routeCoordinates = null;
     let sortableInstance = null;
@@ -922,6 +937,11 @@ include '../includes/header.php';
                     })
                 }).addTo(marcadoresLayer);
 
+                marker.on('click', () => {
+                    puntoSeleccionado = punto; // Set the clicked point as selected
+                    document.getElementById('punto_id_hidden').value = punto.punto_id || punto.id || punto.ruta_punto_id; // Set the hidden field
+                });
+
                 marker.bindPopup(`
                     <div class="p-2">
                         <strong>${punto.nombre || 'Punto ' + (index + 1)}</strong><br>
@@ -1128,7 +1148,7 @@ include '../includes/header.php';
                                 ${punto.completado || punto.visitado ? 'Visitado' : 'Pendiente'}
                             </span>
                             <br>
-                            <button class="btn btn-sm btn-outline-primary mt-1" onclick="event.stopPropagation(); gestionarPunto(${index})">
+                            <button class="btn btn-sm btn-outline-primary mt-1" onclick="event.stopPropagation(); abrirModalGestionarPunto(${index})">
                                 <i class="bi bi-gear"></i> Gestionar
                             </button>
                         </div>
@@ -1210,50 +1230,39 @@ include '../includes/header.php';
         }
     }
 
-    function gestionarPunto(index) {
-        if (!rutaActual || !rutaActual.puntos || !rutaActual.puntos[index]) return;
+    function abrirActaVisita() {
+        const puntoNombre = document.getElementById('punto_nombre_hidden').value;
+        const puntoDireccion = document.getElementById('punto_direccion_hidden').value;
+        const rutaId = rutaActual ? rutaActual.ruta_promotor_id : '';
+        const puntoId = document.getElementById('punto_id_hidden').value; // Get punto_id from hidden field
 
-        const punto = rutaActual.puntos[index];
+        const url = `/promotores-campo-system/promotor/acta_visita.php?ruta_id=${rutaId}&punto_id=${puntoId}&punto_nombre=${encodeURIComponent(puntoNombre)}&punto_direccion=${encodeURIComponent(puntoDireccion)}`;
+        window.location.href = url;
+    }
 
-        document.getElementById('punto_index').value = index;
-        document.getElementById('modalPuntoTitulo').textContent = `Gestionar Punto ${index + 1}`;
-        document.getElementById('punto_info_nombre').textContent = punto.nombre || `Punto ${index + 1}`;
-        document.getElementById('punto_info_direccion').textContent = punto.direccion || 'Sin dirección especificada';
-
-        const estadoActual = punto.estado || (punto.completado || punto.visitado ? 'visitado' : 'pendiente');
-        document.getElementById('punto_estado').value = estadoActual;
-        document.getElementById('punto_notas').value = punto.notas || '';
-        document.getElementById('punto_evidencias').value = '';
-        document.getElementById('preview_evidencias').innerHTML = '';
-
-        if (punto.evidencias && punto.evidencias.length > 0) {
-            const preview = document.getElementById('preview_evidencias');
-            punto.evidencias.forEach(evidencia => {
-                const col = document.createElement('div');
-                col.className = 'col-md-4 col-6';
-                const fileName = evidencia.url.split('/').pop();
-                const fileType = evidencia.tipo || fileName.split('.').pop().toLowerCase();
-
-                if (fileType.startsWith('image')) {
-                    col.innerHTML = `
-                        <div class="border rounded p-2 text-center">
-                            <img src="${evidencia.url}" class="img-fluid rounded mb-2" style="max-height: 100px; object-fit: cover;">
-                            <small class="d-block text-truncate">${fileName}</small>
-                        </div>
-                    `;
-                } else if (fileType === 'pdf') {
-                    col.innerHTML = `
-                        <div class="border rounded p-2 text-center">
-                            <i class="bi bi-file-earmark-pdf text-danger" style="font-size: 3rem;"></i>
-                            <small class="d-block text-truncate">${fileName}</small>
-                        </div>
-                    `;
-                }
-                preview.appendChild(col);
-            });
+    function abrirModalGestionarPunto(index) {
+        if (!jornadaActiva) {
+            const modalSinJornada = new bootstrap.Modal(document.getElementById('modalSinJornada'));
+            modalSinJornada.show();
+            return;
         }
 
-        new bootstrap.Modal(document.getElementById('modalGestionarPunto')).show();
+        const punto = rutaActual.puntos[index];
+        document.getElementById('punto_index').value = index;
+        document.getElementById('modalPuntoTitulo').textContent = 'Gestionar: ' + punto.nombre;
+        document.getElementById('punto_info_nombre').textContent = punto.nombre;
+        document.getElementById('punto_info_direccion').textContent = punto.direccion || 'Sin dirección';
+        document.getElementById('punto_estado').value = punto.estado || 'pendiente';
+        document.getElementById('punto_notas').value = punto.notas || '';
+
+        document.getElementById('punto_nombre_hidden').value = punto.nombre;
+        document.getElementById('punto_direccion_hidden').value = punto.direccion || '';
+        document.getElementById('punto_id_hidden').value = punto.punto_id || punto.id || punto.ruta_punto_id; // Set hidden field for punto_id
+
+        document.getElementById('preview_evidencias').innerHTML = '';
+
+        const modal = new bootstrap.Modal(document.getElementById('modalGestionarPunto'));
+        modal.show();
     }
 
     document.getElementById('punto_evidencias')?.addEventListener('change', function(e) {

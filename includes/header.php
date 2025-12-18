@@ -299,6 +299,12 @@ require_once __DIR__ . '/../config/session.php';
                                     <i class="bi bi-kanban me-1"></i> Proyectos
                                 </a>
                             </li>
+                            <!-- Added new Products menu item for Admin -->
+                            <li class="nav-item">
+                                <a class="nav-link <?php echo $currentPage === 'productos.php' ? 'active' : ''; ?>" href="/promotores-campo-system/admin/productos.php">
+                                    <i class="bi bi-box-seam me-1"></i> Productos
+                                </a>
+                            </li>
                             <li class="nav-item">
                                 <a class="nav-link <?php echo $currentPage === 'auditoria.php' ? 'active' : ''; ?>" href="/promotores-campo-system/admin/auditoria.php">
                                     <i class="bi bi-file-text me-1"></i> Auditoría
@@ -332,6 +338,17 @@ require_once __DIR__ . '/../config/session.php';
                             <li class="nav-item">
                                 <a class="nav-link <?php echo $currentPage === 'rutas.php' ? 'active' : ''; ?>" href="/promotores-campo-system/supervisor/rutas.php">
                                     <i class="bi bi-map me-1"></i> Rutas
+                                </a>
+                            </li>
+                            <!-- Added new Products and History menu items for Supervisor -->
+                            <li class="nav-item">
+                                <a class="nav-link <?php echo $currentPage === 'productos.php' ? 'active' : ''; ?>" href="/promotores-campo-system/supervisor/productos.php">
+                                    <i class="bi bi-box-seam me-1"></i> Productos
+                                </a>
+                            </li>
+                            <li class="nav-item">
+                                <a class="nav-link <?php echo $currentPage === 'historial_equipo.php' ? 'active' : ''; ?>" href="/promotores-campo-system/supervisor/historial_equipo.php">
+                                    <i class="bi bi-clock-history me-1"></i> Historial
                                 </a>
                             </li>
                             <li class="nav-item">
@@ -369,6 +386,22 @@ require_once __DIR__ . '/../config/session.php';
                             <li class="nav-item">
                                 <a class="nav-link <?php echo $currentPage === 'asignaciones.php' ? 'active' : ''; ?>" href="/promotores-campo-system/promotor/asignaciones.php">
                                     <i class="bi bi-list-task me-1"></i> Mis Asignaciones
+                                </a>
+                            </li>
+                            <!-- Added new Acta de Visita, Cotizacion, and Historial menu items for Promotor -->
+                            <li class="nav-item">
+                                <a class="nav-link <?php echo $currentPage === 'acta_visita.php' ? 'active' : ''; ?>" href="/promotores-campo-system/promotor/acta_visita.php">
+                                    <i class="bi bi-file-earmark-text me-1"></i> Acta de Visita
+                                </a>
+                            </li>
+                            <li class="nav-item">
+                                <a class="nav-link <?php echo $currentPage === 'cotizacion.php' ? 'active' : ''; ?>" href="/promotores-campo-system/promotor/cotizacion.php">
+                                    <i class="bi bi-receipt me-1"></i> Cotización
+                                </a>
+                            </li>
+                            <li class="nav-item">
+                                <a class="nav-link <?php echo $currentPage === 'historial.php' ? 'active' : ''; ?>" href="/promotores-campo-system/promotor/historial.php">
+                                    <i class="bi bi-clock-history me-1"></i> Historial
                                 </a>
                             </li>
                             <li class="nav-item position-relative">
@@ -428,3 +461,9 @@ require_once __DIR__ . '/../config/session.php';
     <?php endif; ?>
 
     <main class="container-fluid py-4">
+
+    </main>
+
+</body>
+
+</html>

@@ -85,38 +85,39 @@ try {
                     }
                 }
 
-                // Formatear progreso de ruta
                 if ($p['ruta_activa']) {
                     $progreso = $p['ruta_total'] > 0 ? round(($ruta_visitados / $p['ruta_total']) * 100) : 0;
                     $p['ruta_progreso'] = "Progreso: {$ruta_visitados}/{$p['ruta_total']} puntos ({$progreso}%)";
                     $rutasActivas++;
                 }
 
-                // Formatear tiempo de última actividad
                 if ($p['ultima_actividad_fecha']) {
                     $fecha = new DateTime($p['ultima_actividad_fecha']);
                     $ahora = new DateTime();
                     $diff = $ahora->diff($fecha);
 
-                    if ($diff->h > 0) {
-                        $p['ultima_actividad_tiempo'] = "Hace {$diff->h}h {$diff->i}m";
+                    if ($diff->d > 0) {
+                        $p['ultima_actividad_tiempo'] = "Hace {$diff->d}d {$diff->h}h";
+                    } else if ($diff->h > 0) {
+                        $p['ultima_actividad_tiempo'] = "Hace {$diff->h}h {$diff->i}min";
                     } else if ($diff->i > 0) {
-                        $p['ultima_actividad_tiempo'] = "Hace {$diff->i}m";
+                        $p['ultima_actividad_tiempo'] = "Hace {$diff->i}min";
                     } else {
                         $p['ultima_actividad_tiempo'] = "Hace unos segundos";
                     }
                 }
 
-                // Formatear tiempo de última ubicación
                 if ($p['ultima_ubicacion_fecha']) {
                     $fecha = new DateTime($p['ultima_ubicacion_fecha']);
                     $ahora = new DateTime();
                     $diff = $ahora->diff($fecha);
 
-                    if ($diff->h > 0) {
-                        $p['ultima_ubicacion_tiempo'] = "Hace {$diff->h}h {$diff->i}m";
+                    if ($diff->d > 0) {
+                        $p['ultima_ubicacion_tiempo'] = "Hace {$diff->d}d {$diff->h}h";
+                    } else if ($diff->h > 0) {
+                        $p['ultima_ubicacion_tiempo'] = "Hace {$diff->h}h {$diff->i}min";
                     } else if ($diff->i > 0) {
-                        $p['ultima_ubicacion_tiempo'] = "Hace {$diff->i}m";
+                        $p['ultima_ubicacion_tiempo'] = "Hace {$diff->i}min";
                     } else {
                         $p['ultima_ubicacion_tiempo'] = "Hace unos segundos";
                     }
@@ -200,7 +201,6 @@ try {
                 }
             }
 
-            // Formatear progreso de ruta
             if ($promotor['ruta_activa']) {
                 $progreso = $promotor['ruta_total'] > 0 ? round(($ruta_visitados / $promotor['ruta_total']) * 100) : 0;
                 $promotor['ruta_progreso'] = "Progreso: {$ruta_visitados}/{$promotor['ruta_total']} puntos ({$progreso}%)";

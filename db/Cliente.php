@@ -81,4 +81,18 @@ class Cliente
         $stmt = $this->db->query("SELECT * FROM clientes WHERE activo = 1 ORDER BY nombre_empresa");
         return $stmt->fetchAll();
     }
+
+    public function getByPromotor($promotorId)
+    {
+        $stmt = $this->db->prepare("
+            SELECT DISTINCT c.* 
+            FROM clientes c
+            INNER JOIN productos p ON c.id = p.cliente_id
+            INNER JOIN producto_asignaciones pa ON p.id = pa.producto_id
+            WHERE pa.promotor_user_id = ? AND c.activo = 1
+            ORDER BY c.nombre_empresa
+        ");
+        $stmt->execute([$promotorId]);
+        return $stmt->fetchAll();
+    }
 }
