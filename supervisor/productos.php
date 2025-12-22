@@ -34,6 +34,15 @@ require_once __DIR__ . '/../includes/header.php';
         </div>
     <?php endif; ?>
 
+    <?php if (isset($_SESSION['error'])): ?>
+        <!-- Show error messages -->
+        <div class="alert alert-danger alert-dismissible fade show">
+            <i class="bi bi-exclamation-triangle-fill"></i> <?php echo $_SESSION['error'];
+                                                            unset($_SESSION['error']); ?>
+            <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+        </div>
+    <?php endif; ?>
+
     <div class="row">
         <div class="col-md-6 mb-4">
             <div class="card shadow-sm">
@@ -46,6 +55,8 @@ require_once __DIR__ . '/../includes/header.php';
                             <div class="text-center py-4 text-muted">
                                 <i class="bi bi-inbox" style="font-size: 2rem;"></i>
                                 <p class="mt-2 mb-0">No hay productos disponibles</p>
+                                <!-- Note about stock availability -->
+                                <small class="text-muted">Solo se muestran productos con stock disponible</small>
                             </div>
                         <?php else: ?>
                             <?php foreach ($productos as $producto): ?>
@@ -61,7 +72,10 @@ require_once __DIR__ . '/../includes/header.php';
                                             </p>
                                             <p class="mb-0 small">
                                                 <span class="badge bg-info"><?php echo htmlspecialchars($producto['nombre_empresa']); ?></span>
-                                                <span class="badge bg-success">Stock: <?php echo $producto['cantidad_stock']; ?></span>
+                                                <!-- Highlight stock availability -->
+                                                <span class="badge <?php echo $producto['cantidad_stock'] > 10 ? 'bg-success' : ($producto['cantidad_stock'] > 0 ? 'bg-warning' : 'bg-danger'); ?>">
+                                                    Stock: <?php echo $producto['cantidad_stock']; ?>
+                                                </span>
                                                 <span class="badge bg-primary">$<?php echo number_format($producto['precio'], 2); ?></span>
                                             </p>
                                         </div>
@@ -142,7 +156,16 @@ require_once __DIR__ . '/../includes/header.php';
                 <div class="mb-3">
                     <label for="asignar_cantidad" class="form-label">Cantidad a Asignar *</label>
                     <input type="number" class="form-control" id="asignar_cantidad" min="1" value="1" required>
-                    <small class="text-muted">Stock disponible: <span id="stock_disponible" class="fw-bold text-success"></span></small>
+                    <!-- Clearer stock availability message -->
+                    <small class="text-muted">Stock disponible en almacén: <span id="stock_disponible" class="fw-bold text-success"></span> unidades</small>
+                </div>
+
+                <!-- Warning message about stock deduction -->
+                <div class="alert alert-warning">
+                    <i class="bi bi-info-circle"></i>
+                    <small>
+                        <strong>Importante:</strong> Al asignar este producto, se descontará del stock en almacén y se agregará al inventario del promotor.
+                    </small>
                 </div>
             </div>
             <div class="modal-footer">
@@ -184,7 +207,7 @@ require_once __DIR__ . '/../includes/header.php';
         productoActual = producto;
         document.getElementById('asignar_producto_id').value = producto.id;
         document.getElementById('asignar_producto_nombre').value = producto.nombre;
-        document.getElementById('stock_disponible').textContent = producto.cantidad_stock + ' unidades';
+        document.getElementById('stock_disponible').textContent = producto.cantidad_stock;
         document.getElementById('asignar_cantidad').max = producto.cantidad_stock;
         document.getElementById('asignar_cantidad').value = Math.min(1, producto.cantidad_stock);
 
@@ -207,6 +230,11 @@ require_once __DIR__ . '/../includes/header.php';
             return;
         }
 
+        const btn = event.target;
+        const originalText = btn.innerHTML;
+        btn.disabled = true;
+        btn.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span>Asignando...';
+
         fetch('/promotores-campo-system/api/producto_crud.php', {
                 method: 'POST',
                 headers: {
@@ -222,6 +250,9 @@ require_once __DIR__ . '/../includes/header.php';
             })
             .then(response => response.json())
             .then(data => {
+                btn.disabled = false;
+                btn.innerHTML = originalText;
+
                 if (data.success) {
                     alert('Producto asignado exitosamente');
                     bootstrap.Modal.getInstance(document.getElementById('asignarModal')).hide();
@@ -231,6 +262,8 @@ require_once __DIR__ . '/../includes/header.php';
                 }
             })
             .catch(error => {
+                btn.disabled = false;
+                btn.innerHTML = originalText;
                 console.error('[v0] Error:', error);
                 alert('Error al asignar producto');
             });

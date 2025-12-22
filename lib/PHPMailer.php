@@ -1,307 +1,526 @@
 <?php
 
+/**
+ * Utilidad mejorada para envío de correos electrónicos usando PHPMailer
+ * Con logs detallados para rastreo y debugging
+ */
+
 require_once __DIR__ . '/../config/database.php';
 
-class EmailService
-{
-    private $config;
+$phpmailerPaths = [
+    __DIR__ . '/../../vendor/phpmailer/phpmailer/src/Exception.php',
+    __DIR__ . '/../../vendor/phpmailer/phpmailer/src/PHPMailer.php',
+    __DIR__ . '/../../vendor/phpmailer/phpmailer/src/SMTP.php',
+    __DIR__ . '/../vendor/PHPMailer/src/Exception.php',
+    __DIR__ . '/../vendor/PHPMailer/src/PHPMailer.php',
+    __DIR__ . '/../vendor/PHPMailer/src/SMTP.php',
+];
 
-    public function __construct()
-    {
-        $this->loadConfig();
+$phpmailerLoaded = false;
+foreach ($phpmailerPaths as $i => $path) {
+    if ($i % 3 === 0) { // Check first file of each set
+        if (file_exists($path)) {
+            require_once $path;
+            require_once $phpmailerPaths[$i + 1];
+            require_once $phpmailerPaths[$i + 2];
+            $phpmailerLoaded = true;
+            error_log('[PHPMailer] INFO: PHPMailer loaded from: ' . dirname($path));
+            break;
+        }
     }
+}
 
-    private function loadConfig()
+if (!$phpmailerLoaded) {
+    error_log('[PHPMailer] WARNING: PHPMailer library not found. Creating mock classes to prevent errors.');
+    
+    // Crear namespace mock
+    if (!class_exists('PHPMailer\PHPMailer\PHPMailer')) {
+        eval('
+            namespace PHPMailer\PHPMailer {
+                class Exception extends \Exception {}
+                
+                class PHPMailer {
+                    const ENCRYPTION_STARTTLS = "tls";
+                    const ENCRYPTION_SMTPS = "ssl";
+                    
+                    public $Host;
+                    public $Port;
+                    public $SMTPAuth;
+                    public $Username;
+                    public $Password;
+                    public $SMTPSecure;
+                    public $CharSet;
+                    public $SMTPDebug;
+                    public $Debugoutput;
+                    public $Subject;
+                    public $Body;
+                    public $AltBody;
+                    public $ErrorInfo;
+                    
+                    public function __construct($exceptions = false) {}
+                    public function isSMTP() {}
+                    public function setFrom($address, $name = "") {}
+                    public function addAddress($address, $name = "") {}
+                    public function isHTML($isHtml = true) {}
+                    public function send() {
+                        error_log("[PHPMailer] ERROR: Cannot send email - PHPMailer not installed. Please run: composer require phpmailer/phpmailer");
+                        $this->ErrorInfo = "PHPMailer not installed. Please run: composer require phpmailer/phpmailer";
+                        return false;
+                    }
+                }
+                
+                class SMTP {}
+            }
+        ');
+    }
+}
+
+use PHPMailer\PHPMailer\PHPMailer;
+use PHPMailer\PHPMailer\Exception;
+
+class EmailUtilidad
+{
+    private static $smtpHost = 'smtp.hostinger.com';
+    private static $smtpPort = 587;
+    private static $smtpUsername = 'info@sdw.com.co';
+    private static $smtpPassword = 'O7=k5M2w#';
+    private static $fromEmail = 'info@sdw.com.co';
+    private static $fromName = 'Sistema WMS - Notificaciones';
+    private static $logToDatabase = true;
+
+    /**
+     * Registra un log en la base de datos
+     */
+    private static function log($nivel, $mensaje, $contexto = [])
     {
-        $db = Database::getInstance()->getConnection();
-        $stmt = $db->prepare("SELECT * FROM configuracion_smtp WHERE activo = 1 LIMIT 1");
-        $stmt->execute();
-        $this->config = $stmt->fetch(PDO::FETCH_ASSOC);
-
-        if (!$this->config) {
-            // Configuración por defecto desde variables de entorno
-            $this->config = [
-                'host' => getenv('SMTP_HOST') ?: 'smtp.hostinger.com',
-                'puerto' => getenv('SMTP_PORT') ?: 587,
-                'usuario' => getenv('SMTP_USER') ?: 'info@sdw.com.co',
-                'password' => getenv('SMTP_PASSWORD') ?: 'O7=k5M2w#',
-                'encriptacion' => getenv('SMTP_ENCRYPTION') ?: 'tls',
-                'remitente_email' => getenv('SMTP_FROM_EMAIL') ?: 'info@sdw.com.co',
-                'remitente_nombre' => getenv('SMTP_FROM_NAME') ?: 'Sistema Promotores Campo'
-            ];
+        try {
+            error_log("[PHPMailer] [{$nivel}] {$mensaje} " . json_encode($contexto));
+            
+            if (self::$logToDatabase) {
+                $db = Database::getInstance()->getConnection();
+                $stmt = $db->prepare("
+                    INSERT INTO email_logs (nivel, mensaje, contexto, fecha)
+                    VALUES (?, ?, ?, NOW())
+                ");
+                $stmt->execute([$nivel, $mensaje, json_encode($contexto)]);
+            }
+        } catch (Exception $e) {
+            error_log("[PHPMailer] ERROR logging to database: " . $e->getMessage());
         }
     }
 
-    public function enviarEmail($destinatario, $asunto, $cuerpoHtml, $tipo = 'notificacion')
+    /**
+     * Envía un correo electrónico usando PHPMailer con configuración SMTP
+     * 
+     * @param array $destinatario Array con 'correo' y 'nombre' del destinatario
+     * @param string $asunto Asunto del correo
+     * @param string $mensaje Cuerpo del mensaje en HTML
+     * @return bool True si el correo se envió correctamente
+     * @throws Exception Si hay algún error al enviar el correo
+     */
+    public static function enviarCorreo($destinatario, $asunto, $mensaje)
     {
-        $db = Database::getInstance()->getConnection();
+        self::log('INFO', 'Iniciando envío de correo', [
+            'destinatario' => $destinatario['correo'],
+            'asunto' => $asunto
+        ]);
 
         try {
-            // Preparar headers
-            $headers = [
-                'MIME-Version: 1.0',
-                'Content-type: text/html; charset=UTF-8',
-                'From: ' . $this->config['remitente_nombre'] . ' <' . $this->config['remitente_email'] . '>',
-                'Reply-To: ' . $this->config['remitente_email'],
-                'X-Mailer: PHP/' . phpversion()
-            ];
+            $mail = new PHPMailer(true); // true enables exceptions
 
-            // Enviar email usando mail() de PHP
-            $enviado = mail(
-                $destinatario['email'],
-                $asunto,
-                $cuerpoHtml,
-                implode("\r\n", $headers)
-            );
-
-            // Registrar en base de datos
-            $stmt = $db->prepare("
-                INSERT INTO emails_enviados (destinatario_email, destinatario_nombre, asunto, tipo_email, estado, error_mensaje)
-                VALUES (?, ?, ?, ?, ?, ?)
-            ");
-
-            $stmt->execute([
-                $destinatario['email'],
-                $destinatario['nombre'] ?? '',
-                $asunto,
-                $tipo,
-                $enviado ? 'enviado' : 'fallido',
-                $enviado ? null : 'Error al enviar email'
+            self::log('DEBUG', 'Configurando servidor SMTP', [
+                'host' => self::$smtpHost,
+                'port' => self::$smtpPort,
+                'username' => self::$smtpUsername
             ]);
 
-            return $enviado;
+            $mail->isSMTP();
+            $mail->Host = self::$smtpHost;
+            $mail->Port = self::$smtpPort;
+            $mail->SMTPAuth = true;
+            $mail->Username = self::$smtpUsername;
+            $mail->Password = self::$smtpPassword;
+            $mail->SMTPSecure = PHPMailer::ENCRYPTION_STARTTLS; // Use STARTTLS for port 587
+            $mail->CharSet = 'UTF-8';
+            
+            $mail->SMTPDebug = 0; // Set to 2 for detailed debugging
+            $mail->Debugoutput = function($str, $level) {
+                self::log('DEBUG', "SMTP Debug: {$str}", ['level' => $level]);
+            };
+
+            self::log('DEBUG', 'Configurando remitente', [
+                'from' => self::$fromEmail,
+                'fromName' => self::$fromName
+            ]);
+            $mail->setFrom(self::$fromEmail, self::$fromName);
+
+            self::log('DEBUG', 'Agregando destinatario', [
+                'email' => $destinatario['correo'],
+                'nombre' => $destinatario['nombre']
+            ]);
+            $mail->addAddress($destinatario['correo'], $destinatario['nombre']);
+
+            $mail->Subject = $asunto;
+            $mail->isHTML(true);
+            $mail->Body = $mensaje;
+            $mail->AltBody = strip_tags($mensaje); // Plain text alternative
+
+            self::log('INFO', 'Intentando enviar correo');
+            
+            if (!$mail->send()) {
+                self::log('ERROR', 'Fallo al enviar correo', [
+                    'error' => $mail->ErrorInfo
+                ]);
+                throw new Exception("Error al enviar correo: " . $mail->ErrorInfo);
+            }
+
+            self::log('SUCCESS', 'Correo enviado exitosamente', [
+                'destinatario' => $destinatario['correo'],
+                'asunto' => $asunto
+            ]);
+
+            return true;
         } catch (Exception $e) {
-            // Registrar error
-            $stmt = $db->prepare("
-                INSERT INTO emails_enviados (destinatario_email, destinatario_nombre, asunto, tipo_email, estado, error_mensaje)
-                VALUES (?, ?, ?, ?, 'fallido', ?)
-            ");
-
-            $stmt->execute([
-                $destinatario['email'],
-                $destinatario['nombre'] ?? '',
-                $asunto,
-                $tipo,
-                $e->getMessage()
+            self::log('ERROR', 'Excepción al enviar correo', [
+                'exception' => $e->getMessage(),
+                'trace' => $e->getTraceAsString()
             ]);
-
-            return false;
+            throw new Exception("Error al enviar correo: " . $e->getMessage());
         }
     }
 
-    public function enviarNotificacionRutaAsignada($promotor, $ruta)
+    /**
+     * Envía una notificación de observación de pedido
+     */
+    public static function enviarNotificacionObservacion($destinatario, $pedido, $observaciones)
     {
-        $asunto = "Nueva Ruta Asignada: {$ruta['nombre_ruta']}";
+        $asunto = "Nueva observación en pedido #" . $pedido;
 
-        $cuerpo = $this->getTemplate('ruta_asignada', [
-            'nombre_promotor' => $promotor['nombre_completo'],
-            'nombre_ruta' => $ruta['nombre_ruta'],
-            'fecha_planificada' => $ruta['fecha_planificada'],
-            'num_puntos' => count($ruta['puntos'] ?? []),
-            'proyecto' => $ruta['nombre_proyecto'] ?? ''
-        ]);
+        $mensaje = '
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Notificación de Observación</title>
+</head>
+<body style="margin: 0; padding: 0; font-family: Arial, Helvetica, sans-serif; background-color: #f4f4f4;">
+    <table role="presentation" style="width: 100%; border-collapse: collapse; background-color: #f4f4f4;" cellpadding="0" cellspacing="0">
+        <tr>
+            <td style="padding: 40px 20px;">
+                <table role="presentation" style="max-width: 600px; margin: 0 auto; background-color: #ffffff; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.1);" cellpadding="0" cellspacing="0">
+                    <tr>
+                        <td style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); padding: 40px 30px; text-align: center; border-radius: 8px 8px 0 0;">
+                            <h1 style="margin: 0; color: #ffffff; font-size: 28px; font-weight: 600; letter-spacing: -0.5px;">Sistema Promotores</h1>
+                            <p style="margin: 10px 0 0 0; color: #ffffff; font-size: 14px; opacity: 0.9;">Sistema de Gestión</p>
+                        </td>
+                    </tr>
+                    
+                    <tr>
+                        <td style="padding: 50px 30px;">
+                            <p style="margin: 0 0 20px 0; color: #333333; font-size: 16px; line-height: 1.6;">
+                                Estimado/a <strong>' . htmlspecialchars($destinatario['nombre']) . '</strong>,
+                            </p>
+                            <p style="margin: 0 0 20px 0; color: #333333; font-size: 16px; line-height: 1.6;">
+                                Se ha registrado una nueva observación para el pedido <strong>#' . htmlspecialchars($pedido) . '</strong>:
+                            </p>
+                            <div style="background-color: #fff3cd; padding: 20px; border-left: 4px solid #ffc107; margin: 20px 0;">
+                                <p style="margin: 0 0 10px 0; color: #856404; font-size: 14px; font-weight: 600;">Observaciones:</p>
+                                <p style="margin: 0; color: #856404; font-size: 14px; line-height: 1.6;">' . htmlspecialchars($observaciones) . '</p>
+                            </div>
+                        </td>
+                    </tr>
+                    
+                    <tr>
+                        <td style="background-color: #f8f9fa; padding: 30px; text-align: center; border-radius: 0 0 8px 8px; border-top: 1px solid #e9ecef;">
+                            <p style="margin: 0 0 10px 0; color: #999999; font-size: 13px; line-height: 1.5;">
+                                Este correo es informativo, por favor no responder este mensaje.
+                            </p>
+                            <p style="margin: 0; color: #cccccc; font-size: 12px;">
+                                © ' . date('Y') . ' Sistema Promotores - Todos los derechos reservados
+                            </p>
+                        </td>
+                    </tr>
+                </table>
+            </td>
+        </tr>
+    </table>
+</body>
+</html>
+        ';
 
-        return $this->enviarEmail(
-            ['email' => $promotor['email'], 'nombre' => $promotor['nombre_completo']],
-            $asunto,
-            $cuerpo,
-            'ruta_asignada'
-        );
+        return self::enviarCorreo($destinatario, $asunto, $mensaje);
     }
 
-    public function enviarNotificacionRutaActualizada($promotor, $ruta)
+    /**
+     * Envía una notificación de cambio de estado
+     */
+    public static function enviarNotificacionEstado($destinatario, $pedido, $estadoNuevo, $estadoAnterior = null)
     {
-        $asunto = "Ruta Actualizada: {$ruta['nombre_ruta']}";
+        $asunto = "Pedido " . $estadoNuevo;
 
-        $cuerpo = $this->getTemplate('ruta_actualizada', [
-            'nombre_promotor' => $promotor['nombre_completo'],
-            'nombre_ruta' => $ruta['nombre_ruta'],
-            'fecha_planificada' => $ruta['fecha_planificada'],
-            'num_puntos' => count($ruta['puntos'] ?? [])
-        ]);
+        $tipoPedido = is_numeric($pedido)
+            ? 'El pedido <b># ' . htmlspecialchars($pedido)
+            : 'El documento <b># ' . htmlspecialchars($pedido);
 
-        return $this->enviarEmail(
-            ['email' => $promotor['email'], 'nombre' => $promotor['nombre_completo']],
-            $asunto,
-            $cuerpo,
-            'ruta_actualizada'
-        );
+        $mensaje = '
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Notificación de Pedido</title>
+</head>
+<body style="margin: 0; padding: 0; font-family: Arial, Helvetica, sans-serif; background-color: #f4f4f4;">
+    <table role="presentation" style="width: 100%; border-collapse: collapse; background-color: #f4f4f4;" cellpadding="0" cellspacing="0">
+        <tr>
+            <td style="padding: 40px 20px;">
+                <table role="presentation" style="max-width: 600px; margin: 0 auto; background-color: #ffffff; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.1);" cellpadding="0" cellspacing="0">
+                    <tr>
+                        <td style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); padding: 40px 30px; text-align: center; border-radius: 8px 8px 0 0;">
+                            <h1 style="margin: 0; color: #ffffff; font-size: 28px; font-weight: 600; letter-spacing: -0.5px;">Sistema Promotores</h1>
+                            <p style="margin: 10px 0 0 0; color: #ffffff; font-size: 14px; opacity: 0.9;">Sistema de Gestión</p>
+                        </td>
+                    </tr>
+                    
+                    <tr>
+                        <td style="padding: 50px 30px; text-align: center;">
+                            <p style="margin: 0; color: #333333; font-size: 20px; line-height: 1.6;">
+                                ' . $tipoPedido . '</b> fue <strong style="color: #667eea; text-transform: uppercase;">' . htmlspecialchars($estadoNuevo) . '</strong>.
+                            </p>
+                        </td>
+                    </tr>
+                    
+                    <tr>
+                        <td style="background-color: #f8f9fa; padding: 30px; text-align: center; border-radius: 0 0 8px 8px; border-top: 1px solid #e9ecef;">
+                            <p style="margin: 0 0 10px 0; color: #999999; font-size: 13px; line-height: 1.5;">
+                                Este correo es informativo, por favor no responder este mensaje.
+                            </p>
+                            <p style="margin: 0; color: #cccccc; font-size: 12px;">
+                                © ' . date('Y') . ' Sistema Promotores - Todos los derechos reservados
+                            </p>
+                        </td>
+                    </tr>
+                </table>
+            </td>
+        </tr>
+    </table>
+</body>
+</html>
+        ';
+
+        return self::enviarCorreo($destinatario, $asunto, $mensaje);
     }
 
-    public function enviarResetPassword($usuario, $token)
+    /**
+     * Envía una notificación de ruta asignada a un promotor
+     */
+    public static function enviarNotificacionRutaAsignada($promotor, $rutaData)
     {
-        $asunto = "Restablecer Contraseña - Sistema Promotores";
+        $asunto = "Nueva ruta asignada: " . $rutaData['nombre_ruta'];
 
-        $resetUrl = (isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] === 'on' ? "https" : "http")
-            . "://{$_SERVER['HTTP_HOST']}/reset_password.php?token={$token}";
-
-        $cuerpo = $this->getTemplate('reset_password', [
-            'nombre_usuario' => $usuario['nombre_completo'],
-            'reset_url' => $resetUrl
-        ]);
-
-        return $this->enviarEmail(
-            ['email' => $usuario['email'], 'nombre' => $usuario['nombre_completo']],
-            $asunto,
-            $cuerpo,
-            'reset_password'
-        );
-    }
-
-    public function enviarBienvenida($usuario, $passwordTemporal = null)
-    {
-        $asunto = "Bienvenido al Sistema de Promotores de Campo";
-
-        $cuerpo = $this->getTemplate('bienvenida', [
-            'nombre_usuario' => $usuario['nombre_completo'],
-            'email' => $usuario['email'],
-            'password_temporal' => $passwordTemporal,
-            'login_url' => (isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] === 'on' ? "https" : "http")
-                . "://{$_SERVER['HTTP_HOST']}/login.php"
-        ]);
-
-        return $this->enviarEmail(
-            ['email' => $usuario['email'], 'nombre' => $usuario['nombre_completo']],
-            $asunto,
-            $cuerpo,
-            'registro'
-        );
-    }
-
-    private function getTemplate($tipo, $datos)
-    {
-        $baseStyle = "
-            <style>
-                body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; }
-                .container { max-width: 600px; margin: 0 auto; padding: 20px; }
-                .header { background: #1e40af; color: white; padding: 20px; text-align: center; border-radius: 8px 8px 0 0; }
-                .content { background: #f9fafb; padding: 30px; border: 1px solid #e5e7eb; }
-                .button { display: inline-block; padding: 12px 24px; background: #1e40af; color: white; text-decoration: none; border-radius: 6px; margin: 20px 0; }
-                .footer { text-align: center; padding: 20px; color: #6b7280; font-size: 12px; }
-                .info-box { background: white; padding: 15px; border-left: 4px solid #1e40af; margin: 15px 0; }
-            </style>
-        ";
-
-        switch ($tipo) {
-            case 'ruta_asignada':
-                return "
-                    <!DOCTYPE html>
-                    <html>
-                    <head>{$baseStyle}</head>
-                    <body>
-                        <div class='container'>
-                            <div class='header'>
-                                <h1>Nueva Ruta Asignada</h1>
-                            </div>
-                            <div class='content'>
-                                <p>Hola <strong>{$datos['nombre_promotor']}</strong>,</p>
-                                <p>Se te ha asignado una nueva ruta para realizar:</p>
-                                <div class='info-box'>
-                                    <p><strong>Ruta:</strong> {$datos['nombre_ruta']}</p>
-                                    <p><strong>Proyecto:</strong> {$datos['proyecto']}</p>
-                                    <p><strong>Fecha Planificada:</strong> {$datos['fecha_planificada']}</p>
-                                    <p><strong>Número de Puntos:</strong> {$datos['num_puntos']}</p>
-                                </div>
-                                <p>Por favor, revisa los detalles de la ruta en el sistema y prepárate para completarla en la fecha indicada.</p>
-                                <a href='" . (isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] === 'on' ? "https" : "http") . "://{$_SERVER['HTTP_HOST']}/promotor/asignaciones.php' class='button'>Ver Ruta</a>
-                            </div>
-                            <div class='footer'>
-                                <p>Este es un mensaje automático del Sistema de Promotores de Campo</p>
-                            </div>
-                        </div>
-                    </body>
-                    </html>
-                ";
-
-            case 'ruta_actualizada':
-                return "
-                    <!DOCTYPE html>
-                    <html>
-                    <head>{$baseStyle}</head>
-                    <body>
-                        <div class='container'>
-                            <div class='header'>
-                                <h1>Ruta Actualizada</h1>
-                            </div>
-                            <div class='content'>
-                                <p>Hola <strong>{$datos['nombre_promotor']}</strong>,</p>
-                                <p>La ruta <strong>{$datos['nombre_ruta']}</strong> ha sido actualizada.</p>
-                                <div class='info-box'>
-                                    <p><strong>Fecha Planificada:</strong> {$datos['fecha_planificada']}</p>
-                                    <p><strong>Número de Puntos:</strong> {$datos['num_puntos']}</p>
-                                </div>
-                                <p>Por favor, revisa los cambios en el sistema.</p>
-                                <a href='" . (isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] === 'on' ? "https" : "http") . "://{$_SERVER['HTTP_HOST']}/promotor/asignaciones.php' class='button'>Ver Ruta</a>
-                            </div>
-                            <div class='footer'>
-                                <p>Este es un mensaje automático del Sistema de Promotores de Campo</p>
-                            </div>
-                        </div>
-                    </body>
-                    </html>
-                ";
-
-            case 'reset_password':
-                return "
-                    <!DOCTYPE html>
-                    <html>
-                    <head>{$baseStyle}</head>
-                    <body>
-                        <div class='container'>
-                            <div class='header'>
-                                <h1>Restablecer Contraseña</h1>
-                            </div>
-                            <div class='content'>
-                                <p>Hola <strong>{$datos['nombre_usuario']}</strong>,</p>
-                                <p>Hemos recibido una solicitud para restablecer tu contraseña.</p>
-                                <p>Haz clic en el siguiente botón para crear una nueva contraseña:</p>
-                                <a href='{$datos['reset_url']}' class='button'>Restablecer Contraseña</a>
-                                <p><small>Este enlace expirará en 1 hora.</small></p>
-                                <p>Si no solicitaste este cambio, puedes ignorar este mensaje.</p>
-                            </div>
-                            <div class='footer'>
-                                <p>Este es un mensaje automático del Sistema de Promotores de Campo</p>
-                            </div>
-                        </div>
-                    </body>
-                    </html>
-                ";
-
-            case 'bienvenida':
-                $passwordInfo = $datos['password_temporal']
-                    ? "<p><strong>Contraseña Temporal:</strong> {$datos['password_temporal']}</p>"
-                    : "";
-
-                return "
-                    <!DOCTYPE html>
-                    <html>
-                    <head>{$baseStyle}</head>
-                    <body>
-                        <div class='container'>
-                            <div class='header'>
-                                <h1>Bienvenido al Sistema</h1>
-                            </div>
-                            <div class='content'>
-                                <p>Hola <strong>{$datos['nombre_usuario']}</strong>,</p>
-                                <p>Tu cuenta ha sido creada exitosamente en el Sistema de Promotores de Campo.</p>
-                                <div class='info-box'>
-                                    <p><strong>Email:</strong> {$datos['email']}</p>
-                                    {$passwordInfo}
-                                </div>
-                                <p>Puedes iniciar sesión usando el siguiente enlace:</p>
-                                <a href='{$datos['login_url']}' class='button'>Iniciar Sesión</a>
-                                <p><small>Por seguridad, te recomendamos cambiar tu contraseña después del primer inicio de sesión.</small></p>
-                            </div>
-                            <div class='footer'>
-                                <p>Este es un mensaje automático del Sistema de Promotores de Campo</p>
-                            </div>
-                        </div>
-                    </body>
-                    </html>
-                ";
-
-            default:
-                return "<p>Notificación del sistema</p>";
+        $puntosHtml = '';
+        if (!empty($rutaData['puntos'])) {
+            $puntosHtml = '<div style="margin: 20px 0;">';
+            $puntosHtml .= '<p style="margin: 0 0 10px 0; color: #333333; font-size: 14px; font-weight: 600;">Puntos de visita:</p>';
+            $puntosHtml .= '<ul style="margin: 0; padding-left: 20px; color: #666666; font-size: 14px;">';
+            foreach ($rutaData['puntos'] as $punto) {
+                $puntosHtml .= '<li style="margin-bottom: 5px;">' . htmlspecialchars($punto['nombre']) . ' - ' . htmlspecialchars($punto['direccion']) . '</li>';
+            }
+            $puntosHtml .= '</ul>';
+            $puntosHtml .= '</div>';
         }
+
+        $mensaje = '
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Nueva Ruta Asignada</title>
+</head>
+<body style="margin: 0; padding: 0; font-family: Arial, Helvetica, sans-serif; background-color: #f4f4f4;">
+    <table role="presentation" style="width: 100%; border-collapse: collapse; background-color: #f4f4f4;" cellpadding="0" cellspacing="0">
+        <tr>
+            <td style="padding: 40px 20px;">
+                <table role="presentation" style="max-width: 600px; margin: 0 auto; background-color: #ffffff; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.1);" cellpadding="0" cellspacing="0">
+                    <tr>
+                        <td style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); padding: 40px 30px; text-align: center; border-radius: 8px 8px 0 0;">
+                            <h1 style="margin: 0; color: #ffffff; font-size: 28px; font-weight: 600; letter-spacing: -0.5px;">Sistema Promotores</h1>
+                            <p style="margin: 10px 0 0 0; color: #ffffff; font-size: 14px; opacity: 0.9;">Sistema de Gestión</p>
+                        </td>
+                    </tr>
+                    
+                    <tr>
+                        <td style="padding: 50px 30px;">
+                            <p style="margin: 0 0 20px 0; color: #333333; font-size: 16px; line-height: 1.6;">
+                                Hola <strong>' . htmlspecialchars($promotor['nombre_completo']) . '</strong>,
+                            </p>
+                            <p style="margin: 0 0 20px 0; color: #333333; font-size: 16px; line-height: 1.6;">
+                                Se te ha asignado una nueva ruta para el proyecto <strong>' . htmlspecialchars($rutaData['nombre_proyecto']) . '</strong>:
+                            </p>
+                            
+                            <div style="background-color: #f8f9fa; padding: 20px; border-radius: 8px; margin: 20px 0;">
+                                <table style="width: 100%;" cellpadding="8" cellspacing="0">
+                                    <tr>
+                                        <td style="color: #666666; font-size: 14px; font-weight: 600; border-bottom: 1px solid #e9ecef;">Ruta:</td>
+                                        <td style="color: #333333; font-size: 14px; border-bottom: 1px solid #e9ecef;">' . htmlspecialchars($rutaData['nombre_ruta']) . '</td>
+                                    </tr>
+                                    <tr>
+                                        <td style="color: #666666; font-size: 14px; font-weight: 600;">Fecha planificada:</td>
+                                        <td style="color: #333333; font-size: 14px;">' . htmlspecialchars($rutaData['fecha_planificada']) . '</td>
+                                    </tr>
+                                </table>
+                            </div>
+                            
+                            ' . $puntosHtml . '
+                            
+                            <p style="margin: 20px 0 0 0; color: #666666; font-size: 14px; line-height: 1.6;">
+                                Por favor, revisa los detalles completos en el sistema.
+                            </p>
+                        </td>
+                    </tr>
+                    
+                    <tr>
+                        <td style="background-color: #f8f9fa; padding: 30px; text-align: center; border-radius: 0 0 8px 8px; border-top: 1px solid #e9ecef;">
+                            <p style="margin: 0 0 10px 0; color: #999999; font-size: 13px; line-height: 1.5;">
+                                Este correo es informativo, por favor no responder este mensaje.
+                            </p>
+                            <p style="margin: 0; color: #cccccc; font-size: 12px;">
+                                © ' . date('Y') . ' Sistema Promotores - Todos los derechos reservados
+                            </p>
+                        </td>
+                    </tr>
+                </table>
+            </td>
+        </tr>
+    </table>
+</body>
+</html>
+        ';
+
+        $destinatario = [
+            'correo' => $promotor['email'],
+            'nombre' => $promotor['nombre_completo']
+        ];
+
+        return self::enviarCorreo($destinatario, $asunto, $mensaje);
     }
+
+    /**
+     * Envía una notificación de ruta actualizada a un promotor
+     */
+    public static function enviarNotificacionRutaActualizada($promotor, $rutaData)
+    {
+        $asunto = "Ruta actualizada: " . $rutaData['nombre_ruta'];
+
+        $puntosHtml = '';
+        if (!empty($rutaData['puntos'])) {
+            $puntosHtml = '<div style="margin: 20px 0;">';
+            $puntosHtml .= '<p style="margin: 0 0 10px 0; color: #333333; font-size: 14px; font-weight: 600;">Puntos de visita actualizados:</p>';
+            $puntosHtml .= '<ul style="margin: 0; padding-left: 20px; color: #666666; font-size: 14px;">';
+            foreach ($rutaData['puntos'] as $punto) {
+                $puntosHtml .= '<li style="margin-bottom: 5px;">' . htmlspecialchars($punto['nombre']) . ' - ' . htmlspecialchars($punto['direccion']) . '</li>';
+            }
+            $puntosHtml .= '</ul>';
+            $puntosHtml .= '</div>';
+        }
+
+        $mensaje = '
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Ruta Actualizada</title>
+</head>
+<body style="margin: 0; padding: 0; font-family: Arial, Helvetica, sans-serif; background-color: #f4f4f4;">
+    <table role="presentation" style="width: 100%; border-collapse: collapse; background-color: #f4f4f4;" cellpadding="0" cellspacing="0">
+        <tr>
+            <td style="padding: 40px 20px;">
+                <table role="presentation" style="max-width: 600px; margin: 0 auto; background-color: #ffffff; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.1);" cellpadding="0" cellspacing="0">
+                    <tr>
+                        <td style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); padding: 40px 30px; text-align: center; border-radius: 8px 8px 0 0;">
+                            <h1 style="margin: 0; color: #ffffff; font-size: 28px; font-weight: 600; letter-spacing: -0.5px;">Sistema Promotores</h1>
+                            <p style="margin: 10px 0 0 0; color: #ffffff; font-size: 14px; opacity: 0.9;">Sistema de Gestión</p>
+                        </td>
+                    </tr>
+                    
+                    <tr>
+                        <td style="padding: 50px 30px;">
+                            <p style="margin: 0 0 20px 0; color: #333333; font-size: 16px; line-height: 1.6;">
+                                Hola <strong>' . htmlspecialchars($promotor['nombre_completo']) . '</strong>,
+                            </p>
+                            <p style="margin: 0 0 20px 0; color: #333333; font-size: 16px; line-height: 1.6;">
+                                Se ha actualizado tu ruta del proyecto <strong>' . htmlspecialchars($rutaData['nombre_proyecto']) . '</strong>:
+                            </p>
+                            
+                            <div style="background-color: #fff3cd; padding: 20px; border-left: 4px solid #ffc107; margin: 20px 0;">
+                                <p style="margin: 0 0 10px 0; color: #856404; font-size: 14px; font-weight: 600;">⚠️ Atención: Esta ruta ha sido modificada</p>
+                            </div>
+                            
+                            <div style="background-color: #f8f9fa; padding: 20px; border-radius: 8px; margin: 20px 0;">
+                                <table style="width: 100%;" cellpadding="8" cellspacing="0">
+                                    <tr>
+                                        <td style="color: #666666; font-size: 14px; font-weight: 600; border-bottom: 1px solid #e9ecef;">Ruta:</td>
+                                        <td style="color: #333333; font-size: 14px; border-bottom: 1px solid #e9ecef;">' . htmlspecialchars($rutaData['nombre_ruta']) . '</td>
+                                    </tr>
+                                    <tr>
+                                        <td style="color: #666666; font-size: 14px; font-weight: 600;">Fecha planificada:</td>
+                                        <td style="color: #333333; font-size: 14px;">' . htmlspecialchars($rutaData['fecha_planificada']) . '</td>
+                                    </tr>
+                                </table>
+                            </div>
+                            
+                            ' . $puntosHtml . '
+                            
+                            <p style="margin: 20px 0 0 0; color: #666666; font-size: 14px; line-height: 1.6;">
+                                Por favor, revisa los detalles actualizados en el sistema.
+                            </p>
+                        </td>
+                    </tr>
+                    
+                    <tr>
+                        <td style="background-color: #f8f9fa; padding: 30px; text-align: center; border-radius: 0 0 8px 8px; border-top: 1px solid #e9ecef;">
+                            <p style="margin: 0 0 10px 0; color: #999999; font-size: 13px; line-height: 1.5;">
+                                Este correo es informativo, por favor no responder este mensaje.
+                            </p>
+                            <p style="margin: 0; color: #cccccc; font-size: 12px;">
+                                © ' . date('Y') . ' Sistema Promotores - Todos los derechos reservados
+                            </p>
+                        </td>
+                    </tr>
+                </table>
+            </td>
+        </tr>
+    </table>
+</body>
+</html>
+        ';
+
+        $destinatario = [
+            'correo' => $promotor['email'],
+            'nombre' => $promotor['nombre_completo']
+        ];
+
+        return self::enviarCorreo($destinatario, $asunto, $mensaje);
+    }
+}
+
+try {
+    $db = Database::getInstance()->getConnection();
+    $db->exec("
+        CREATE TABLE IF NOT EXISTS email_logs (
+            id INT AUTO_INCREMENT PRIMARY KEY,
+            nivel VARCHAR(20) NOT NULL,
+            mensaje TEXT NOT NULL,
+            contexto TEXT,
+            fecha TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            INDEX idx_nivel (nivel),
+            INDEX idx_fecha (fecha)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+    ");
+    error_log('[PHPMailer] INFO: email_logs table verified/created');
+} catch (Exception $e) {
+    error_log("[PHPMailer] ERROR creating email_logs table: " . $e->getMessage());
 }

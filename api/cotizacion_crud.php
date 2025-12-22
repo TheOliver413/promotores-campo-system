@@ -21,32 +21,32 @@ $method = $_SERVER['REQUEST_METHOD'];
 try {
     if ($method === 'POST') {
         $data = json_decode(file_get_contents('php://input'), true);
-        
+
         if (!$data) {
             ob_clean();
             echo json_encode(['success' => false, 'message' => 'Datos no válidos']);
             exit;
         }
-        
+
         if (isset($data['productos']) && is_array($data['productos'])) {
             foreach ($data['productos'] as $producto) {
                 $stockDisponible = $productoModel->getStockDisponibleParaPromotor(
-                    $producto['id'], 
+                    $producto['id'],
                     $data['promotor_user_id']
                 );
-                
+
                 if ($stockDisponible < $producto['cantidad']) {
                     ob_clean();
                     echo json_encode([
-                        'success' => false, 
+                        'success' => false,
                         'message' => "Stock insuficiente para producto ID {$producto['id']}. " .
-                                   "Disponible: {$stockDisponible}, Requerido: {$producto['cantidad']}"
+                            "Disponible: {$stockDisponible}, Requerido: {$producto['cantidad']}"
                     ]);
                     exit;
                 }
             }
         }
-        
+
         // Create cotizacion
         $cotizacionId = $cotizacionModel->create([
             'acta_id' => $data['acta_id'] ?? null,
@@ -60,12 +60,12 @@ try {
             'estado' => 'enviada',
             'notas' => $data['notas'] ?? null
         ]);
-        
+
         if ($cotizacionId) {
             if (isset($data['productos']) && is_array($data['productos'])) {
                 // Get database connection from cotizacion model
                 $db = $cotizacionModel->db ?? Database::getInstance()->getConnection();
-                
+
                 foreach ($data['productos'] as $producto) {
                     $cotizacionModel->agregarDetalle(
                         $cotizacionId,
@@ -73,23 +73,42 @@ try {
                         $producto['cantidad'],
                         $producto['precio']
                     );
-                    
-                    // Si es una venta, descontar del stock asignado al promotor
-                    if ($data['tipo'] === 'venta') {
-                        $stmt = $db->prepare("
-                            UPDATE producto_asignaciones 
-                            SET cantidad_asignada = cantidad_asignada - ? 
-                            WHERE producto_id = ? AND promotor_user_id = ?
-                        ");
-                        $stmt->execute([
-                            $producto['cantidad'], 
-                            $producto['id'], 
-                            $data['promotor_user_id']
-                        ]);
-                    }
+
+                    $stmt = $db->prepare("
+                        UPDATE producto_asignaciones 
+                        SET cantidad_asignada = cantidad_asignada - ? 
+                        WHERE producto_id = ? AND promotor_user_id = ?
+                    ");
+                    $stmt->execute([
+                        $producto['cantidad'],
+                        $producto['id'],
+                        $data['promotor_user_id']
+                    ]);
+
+                    $stmt = $db->prepare("
+                        INSERT INTO producto_historial 
+                        (producto_id, tipo_movimiento, cantidad, usuario_id, promotor_id, referencia_tipo, referencia_id, notas)
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                    ");
+
+                    $tipoMovimiento = $data['tipo'] === 'venta' ? 'venta' : 'cotizacion';
+                    $notas = $data['tipo'] === 'venta'
+                        ? "Venta registrada - Cotización #{$cotizacionId}"
+                        : "Producto reservado para cotización #{$cotizacionId}";
+
+                    $stmt->execute([
+                        $producto['id'],
+                        $tipoMovimiento,
+                        -$producto['cantidad'], // Negativo porque es salida
+                        $data['promotor_user_id'],
+                        $data['promotor_user_id'],
+                        'cotizacion',
+                        $cotizacionId,
+                        $notas
+                    ]);
                 }
             }
-            
+
             // Notify supervisor
             if ($data['supervisor_user_id']) {
                 $notifModel->create(
@@ -99,7 +118,7 @@ try {
                     $cotizacionId
                 );
             }
-            
+
             ob_clean();
             echo json_encode(['success' => true, 'cotizacion_id' => $cotizacionId]);
         } else {
@@ -111,8 +130,8 @@ try {
             $cotizacion = $cotizacionModel->getById($_GET['id']);
             $detalles = $cotizacionModel->getDetalles($_GET['id']);
             echo json_encode([
-                'success' => true, 
-                'cotizacion' => $cotizacion, 
+                'success' => true,
+                'cotizacion' => $cotizacion,
                 'detalles' => $detalles
             ]);
         } elseif (isset($_GET['promotor_id'])) {
@@ -135,4 +154,3 @@ try {
 }
 
 ob_end_flush();
-?>

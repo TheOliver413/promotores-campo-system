@@ -107,11 +107,76 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
 require_once __DIR__ . '/../includes/header.php';
 
-// Get all users
-$usuarios = $userModel->getAll();
+$filtros = [
+    'nombre' => $_GET['nombre'] ?? '',
+    'email' => $_GET['email'] ?? '',
+    'role_id' => $_GET['role_id'] ?? '',
+    'estado' => $_GET['estado'] ?? '',
+];
+
+$paginaActual = isset($_GET['pagina']) ? max(1, intval($_GET['pagina'])) : 1;
+$registrosPorPagina = 20;
+$offset = ($paginaActual - 1) * $registrosPorPagina;
+
+$db = Database::getInstance()->getConnection();
+
+// Build WHERE clause based on filters
+$whereConditions = [];
+$params = [];
+
+if (!empty($filtros['nombre'])) {
+    $whereConditions[] = "u.nombre_completo LIKE ?";
+    $params[] = "%{$filtros['nombre']}%";
+}
+
+if (!empty($filtros['email'])) {
+    $whereConditions[] = "u.email LIKE ?";
+    $params[] = "%{$filtros['email']}%";
+}
+
+if (!empty($filtros['role_id'])) {
+    $whereConditions[] = "u.role_id = ?";
+    $params[] = $filtros['role_id'];
+}
+
+if (!empty($filtros['estado'])) {
+    $whereConditions[] = "u.estado = ?";
+    $params[] = $filtros['estado'];
+}
+
+$whereClause = !empty($whereConditions) ? 'WHERE ' . implode(' AND ', $whereConditions) : '';
+
+// Count total records
+$countStmt = $db->prepare("
+    SELECT COUNT(*) as total
+    FROM usuarios u
+    {$whereClause}
+");
+$countStmt->execute($params);
+$totalRegistros = $countStmt->fetch()['total'];
+$totalPaginas = ceil($totalRegistros / $registrosPorPagina);
+
+// Get paginated results
+$stmt = $db->prepare("
+    SELECT u.*,
+           r.nombre as role_name,
+           GROUP_CONCAT(DISTINCT c.nombre_empresa ORDER BY c.nombre_empresa SEPARATOR ', ') as clientes_nombres,
+           GROUP_CONCAT(DISTINCT s.nombre_completo ORDER BY s.nombre_completo SEPARATOR ', ') as supervisores_nombres
+    FROM usuarios u
+    LEFT JOIN roles r ON u.role_id = r.id
+    LEFT JOIN usuario_clientes uc ON u.id = uc.usuario_id
+    LEFT JOIN clientes c ON uc.cliente_id = c.id
+    LEFT JOIN supervisor_promotores sp ON u.id = sp.promotor_id
+    LEFT JOIN usuarios s ON sp.supervisor_id = s.id
+    {$whereClause}
+    GROUP BY u.id
+    ORDER BY u.fecha_registro DESC
+    LIMIT {$registrosPorPagina} OFFSET {$offset}
+");
+$stmt->execute($params);
+$usuarios = $stmt->fetchAll();
 
 // Get roles for dropdown
-$db = Database::getInstance()->getConnection();
 $rolesStmt = $db->query("SELECT id, nombre FROM roles ORDER BY nombre");
 $roles = $rolesStmt->fetchAll();
 
@@ -144,7 +209,6 @@ $clientes = $clientesStmt->fetchAll();
     <?php endif; ?>
 
     <?php if (isset($_SESSION['error'])): ?>
-        <!-- Added error message display section -->
         <div class="alert alert-danger alert-dismissible fade show" role="alert">
             <i class="bi bi-exclamation-triangle-fill"></i> <?php echo $_SESSION['error'];
                                                             unset($_SESSION['error']); ?>
@@ -152,19 +216,78 @@ $clientes = $clientesStmt->fetchAll();
         </div>
     <?php endif; ?>
 
+    <!-- Filters section -->
+    <div class="card border-0 shadow-sm mb-3">
+        <div class="card-header bg-light">
+            <h5 class="mb-0">
+                <i class="bi bi-funnel"></i> Filtros
+                <button class="btn btn-sm btn-link float-end" onclick="limpiarFiltros()">
+                    <i class="bi bi-x-circle"></i> Limpiar
+                </button>
+            </h5>
+        </div>
+        <div class="card-body">
+            <form method="GET" class="row g-3">
+                <div class="col-md-3">
+                    <label for="filtro_nombre" class="form-label">Nombre</label>
+                    <input type="text" class="form-control" id="filtro_nombre" name="nombre"
+                        value="<?php echo htmlspecialchars($filtros['nombre']); ?>"
+                        placeholder="Buscar por nombre...">
+                </div>
+                <div class="col-md-3">
+                    <label for="filtro_email" class="form-label">Email</label>
+                    <input type="text" class="form-control" id="filtro_email" name="email"
+                        value="<?php echo htmlspecialchars($filtros['email']); ?>"
+                        placeholder="Buscar por email...">
+                </div>
+                <div class="col-md-2">
+                    <label for="filtro_role" class="form-label">Rol</label>
+                    <select class="form-select" id="filtro_role" name="role_id">
+                        <option value="">Todos</option>
+                        <?php foreach ($roles as $rol): ?>
+                            <option value="<?php echo $rol['id']; ?>"
+                                <?php echo $filtros['role_id'] == $rol['id'] ? 'selected' : ''; ?>>
+                                <?php echo htmlspecialchars($rol['nombre']); ?>
+                            </option>
+                        <?php endforeach; ?>
+                    </select>
+                </div>
+                <div class="col-md-2">
+                    <label for="filtro_estado" class="form-label">Estado</label>
+                    <select class="form-select" id="filtro_estado" name="estado">
+                        <option value="">Todos</option>
+                        <option value="activo" <?php echo $filtros['estado'] === 'activo' ? 'selected' : ''; ?>>Activo</option>
+                        <option value="inactivo" <?php echo $filtros['estado'] === 'inactivo' ? 'selected' : ''; ?>>Inactivo</option>
+                    </select>
+                </div>
+                <div class="col-md-2 d-flex align-items-end">
+                    <button type="submit" class="btn btn-primary w-100">
+                        <i class="bi bi-search"></i> Buscar
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+
     <div class="card border-0 shadow-sm">
         <div class="card-body">
             <?php if (empty($usuarios)): ?>
-                <!-- Added empty state when no users exist -->
                 <div class="text-center py-5">
                     <i class="bi bi-people" style="font-size: 4rem; color: #dee2e6;"></i>
-                    <h4 class="text-muted mt-3">No hay usuarios registrados</h4>
-                    <p class="text-muted mb-4">Comienza creando el primer usuario del sistema</p>
-                    <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#userModal" onclick="resetForm()">
-                        <i class="bi bi-plus-circle"></i> Crear Primer Usuario
-                    </button>
+                    <h4 class="text-muted mt-3">No hay usuarios que coincidan con los filtros</h4>
+                    <p class="text-muted mb-4">Intenta ajustar los criterios de búsqueda</p>
                 </div>
             <?php else: ?>
+                <!-- Results info -->
+                <div class="mb-3">
+                    <small class="text-muted">
+                        Mostrando <?php echo count($usuarios); ?> de <?php echo $totalRegistros; ?> registros
+                        <?php if ($totalPaginas > 1): ?>
+                            (Página <?php echo $paginaActual; ?> de <?php echo $totalPaginas; ?>)
+                        <?php endif; ?>
+                    </small>
+                </div>
+
                 <div class="table-responsive">
                     <table class="table table-hover" id="usuariosTable">
                         <thead>
@@ -235,6 +358,61 @@ $clientes = $clientesStmt->fetchAll();
                         </tbody>
                     </table>
                 </div>
+
+                <!-- Pagination -->
+                <?php if ($totalPaginas > 1): ?>
+                    <nav aria-label="Paginación de usuarios" class="mt-3">
+                        <ul class="pagination justify-content-center">
+                            <?php if ($paginaActual > 1): ?>
+                                <li class="page-item">
+                                    <a class="page-link" href="?<?php echo http_build_query(array_merge($filtros, ['pagina' => $paginaActual - 1])); ?>">
+                                        <i class="bi bi-chevron-left"></i> Anterior
+                                    </a>
+                                </li>
+                            <?php endif; ?>
+
+                            <?php
+                            $rangoInicio = max(1, $paginaActual - 2);
+                            $rangoFin = min($totalPaginas, $paginaActual + 2);
+
+                            if ($rangoInicio > 1): ?>
+                                <li class="page-item">
+                                    <a class="page-link" href="?<?php echo http_build_query(array_merge($filtros, ['pagina' => 1])); ?>">1</a>
+                                </li>
+                                <?php if ($rangoInicio > 2): ?>
+                                    <li class="page-item disabled"><span class="page-link">...</span></li>
+                                <?php endif; ?>
+                            <?php endif; ?>
+
+                            <?php for ($i = $rangoInicio; $i <= $rangoFin; $i++): ?>
+                                <li class="page-item <?php echo $i === $paginaActual ? 'active' : ''; ?>">
+                                    <a class="page-link" href="?<?php echo http_build_query(array_merge($filtros, ['pagina' => $i])); ?>">
+                                        <?php echo $i; ?>
+                                    </a>
+                                </li>
+                            <?php endfor; ?>
+
+                            <?php if ($rangoFin < $totalPaginas): ?>
+                                <?php if ($rangoFin < $totalPaginas - 1): ?>
+                                    <li class="page-item disabled"><span class="page-link">...</span></li>
+                                <?php endif; ?>
+                                <li class="page-item">
+                                    <a class="page-link" href="?<?php echo http_build_query(array_merge($filtros, ['pagina' => $totalPaginas])); ?>">
+                                        <?php echo $totalPaginas; ?>
+                                    </a>
+                                </li>
+                            <?php endif; ?>
+
+                            <?php if ($paginaActual < $totalPaginas): ?>
+                                <li class="page-item">
+                                    <a class="page-link" href="?<?php echo http_build_query(array_merge($filtros, ['pagina' => $paginaActual + 1])); ?>">
+                                        Siguiente <i class="bi bi-chevron-right"></i>
+                                    </a>
+                                </li>
+                            <?php endif; ?>
+                        </ul>
+                    </nav>
+                <?php endif; ?>
             <?php endif; ?>
         </div>
     </div>
@@ -295,7 +473,7 @@ $clientes = $clientesStmt->fetchAll();
                         </div>
                     </div>
 
-                    <!-- Multi-select for clientes - shown for Cliente, Supervisor, and Promotor roles -->
+                    <!-- Multi-select for clientes -->
                     <div class="row" id="clientesGroup" style="display: none;">
                         <div class="col-12 mb-3">
                             <label class="form-label">
@@ -305,8 +483,6 @@ $clientes = $clientesStmt->fetchAll();
                                 <small>
                                     <i class="bi bi-info-circle"></i>
                                     Selecciona una o más empresas a las que este usuario tendrá acceso.
-                                    <strong>No puedes crear nuevas empresas desde aquí.</strong>
-                                    Para agregar empresas, ve al módulo de <a href="/promotores-campo-system/admin/clientes.php" target="_blank">Gestión de Clientes</a>.
                                 </small>
                             </div>
                             <div class="border rounded p-3" style="max-height: 250px; overflow-y: auto; background-color: #f8f9fa;">
@@ -314,9 +490,6 @@ $clientes = $clientesStmt->fetchAll();
                                     <div class="alert alert-warning mb-0">
                                         <i class="bi bi-exclamation-triangle"></i>
                                         No hay empresas disponibles.
-                                        <a href="/promotores-campo-system/admin/clientes.php" target="_blank" class="alert-link">
-                                            Crear una empresa primero
-                                        </a>
                                     </div>
                                 <?php else: ?>
                                     <?php foreach ($clientes as $cliente): ?>
@@ -332,14 +505,10 @@ $clientes = $clientesStmt->fetchAll();
                                     <?php endforeach; ?>
                                 <?php endif; ?>
                             </div>
-                            <small class="text-muted">
-                                <i class="bi bi-lightbulb"></i>
-                                Un usuario puede tener acceso a múltiples empresas
-                            </small>
                         </div>
                     </div>
 
-                    <!-- Multi-select for supervisores - only shown for Promotor role -->
+                    <!-- Multi-select for supervisores -->
                     <div class="row" id="supervisoresGroup" style="display: none;">
                         <div class="col-12 mb-3">
                             <label class="form-label">
@@ -366,10 +535,6 @@ $clientes = $clientesStmt->fetchAll();
                                     <?php endforeach; ?>
                                 <?php endif; ?>
                             </div>
-                            <small class="text-muted">
-                                <i class="bi bi-lightbulb"></i>
-                                Selecciona uno o más supervisores para este promotor
-                            </small>
                         </div>
                     </div>
                 </div>
@@ -414,6 +579,10 @@ $clientes = $clientesStmt->fetchAll();
 </form>
 
 <script>
+    function limpiarFiltros() {
+        window.location.href = '/promotores-campo-system/admin/usuarios.php';
+    }
+
     function toggleRoleFields() {
         const roleSelect = document.getElementById('role_id');
         const selectedRole = roleSelect.options[roleSelect.selectedIndex].text;
@@ -421,14 +590,12 @@ $clientes = $clientesStmt->fetchAll();
         const supervisoresGroup = document.getElementById('supervisoresGroup');
         const clientesGroup = document.getElementById('clientesGroup');
 
-        // Show clients field for Cliente, Supervisor, and Promotor roles
         if (selectedRole === 'Cliente' || selectedRole === 'Supervisor' || selectedRole === 'Promotor') {
             clientesGroup.style.display = 'block';
         } else {
             clientesGroup.style.display = 'none';
         }
 
-        // Show supervisors field only for Promotor role
         if (selectedRole === 'Promotor') {
             supervisoresGroup.style.display = 'block';
         } else {

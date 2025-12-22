@@ -12,6 +12,8 @@ class ActaVisita
 
     public function create($data)
     {
+        error_log('[v0] ActaVisita::create called with promotor_user_id: ' . ($data['promotor_user_id'] ?? 'NULL'));
+
         $stmt = $this->db->prepare("
             INSERT INTO actas_visita 
             (promotor_user_id, ruta_promotor_id, punto_visita_nombre, punto_visita_direccion,
@@ -20,27 +22,35 @@ class ActaVisita
             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         ");
 
-        $result = $stmt->execute([
-            $data['promotor_user_id'],
-            $data['ruta_promotor_id'] ?? null,
-            $data['punto_visita_nombre'],
-            $data['punto_visita_direccion'] ?? null,
-            $data['receptor_nombre'],
-            $data['receptor_telefono'] ?? null,
-            $data['receptor_email'] ?? null,
-            $data['receptor_direccion'] ?? null,
-            $data['observacion'] ?? null,
-            $data['firma_digital'] ?? null,
-            $data['huella_digital'] ?? null,
-            $data['latitud'] ?? null,
-            $data['longitud'] ?? null
-        ]);
+        try {
+            $result = $stmt->execute([
+                $data['promotor_user_id'],
+                $data['ruta_promotor_id'] ?? null,
+                $data['punto_visita_nombre'],
+                $data['punto_visita_direccion'] ?? null,
+                $data['receptor_nombre'],
+                $data['receptor_telefono'] ?? null,
+                $data['receptor_email'] ?? null,
+                $data['receptor_direccion'] ?? null,
+                $data['observacion'] ?? null,
+                $data['firma_digital'] ?? null,
+                $data['huella_digital'] ?? null,
+                $data['latitud'] ?? null,
+                $data['longitud'] ?? null
+            ]);
 
-        if ($result) {
-            return $this->db->lastInsertId();
+            if ($result) {
+                $insertId = $this->db->lastInsertId();
+                error_log('[v0] Successfully inserted acta with ID: ' . $insertId);
+                return $insertId;
+            }
+
+            error_log('[v0] Execute returned false');
+            return false;
+        } catch (PDOException $e) {
+            error_log('[v0] PDOException in ActaVisita::create: ' . $e->getMessage());
+            throw $e;
         }
-
-        return false;
     }
 
     public function agregarFotografia($actaId, $urlFoto, $latitud = null, $longitud = null)

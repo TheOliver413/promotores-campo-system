@@ -883,11 +883,25 @@ include '../includes/header.php';
         formData.append('puntos', JSON.stringify(puntosRuta));
 
         try {
+            console.log('[v0] Enviando ruta - Puntos:', puntosRuta.length);
+            
             const response = await fetch('../api/ruta_crud.php', {
                 method: 'POST',
                 body: formData
             });
+            
+            console.log('[v0] Response status:', response.status);
+            console.log('[v0] Response headers:', response.headers.get('content-type'));
+            
+            const contentType = response.headers.get('content-type');
+            if (!contentType || !contentType.includes('application/json')) {
+                const textResponse = await response.text();
+                console.error('[v0] Respuesta no es JSON:', textResponse);
+                throw new Error('El servidor no devolvió una respuesta JSON válida. Revise los logs del servidor.');
+            }
+            
             const result = await response.json();
+            console.log('[v0] Result:', result);
 
             if (result.success) {
                 alert(result.message);
@@ -895,10 +909,13 @@ include '../includes/header.php';
                 cargarRutas();
             } else {
                 alert('Error: ' + result.message);
+                if (result.debug) {
+                    console.error('[v0] Debug info:', result.debug);
+                }
             }
         } catch (error) {
             console.error('[v0] Error al guardar ruta:', error);
-            alert('Error al guardar ruta');
+            alert('Error al guardar ruta: ' + error.message);
         } finally {
             submitBtn.disabled = false;
             submitBtn.innerHTML = originalText;

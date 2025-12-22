@@ -167,6 +167,9 @@ $clientes = $clienteModel->getAll();
                                         <button class="btn btn-sm btn-outline-primary" onclick='editProducto(<?php echo json_encode($producto); ?>)'>
                                             <i class="bi bi-pencil"></i>
                                         </button>
+                                        <button class="btn btn-sm btn-outline-info" onclick="verHistorial(<?php echo $producto['id']; ?>, '<?php echo htmlspecialchars($producto['nombre']); ?>')">
+                                            <i class="bi bi-clock-history"></i>
+                                        </button>
                                         <button class="btn btn-sm btn-outline-danger" onclick="deleteProducto(<?php echo $producto['id']; ?>, '<?php echo htmlspecialchars($producto['nombre']); ?>')">
                                             <i class="bi bi-trash"></i>
                                         </button>
@@ -277,6 +280,57 @@ $clientes = $clienteModel->getAll();
     </div>
 </div>
 
+<!-- Historial Modal -->
+<div class="modal fade" id="historialModal" tabindex="-1">
+    <div class="modal-dialog modal-xl">
+        <div class="modal-content">
+            <div class="modal-header bg-info text-white">
+                <h5 class="modal-title">
+                    <i class="bi bi-clock-history me-2"></i>
+                    Historial del Producto: <span id="historialProductoNombre"></span>
+                </h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <!-- Tabs for different types of history -->
+                <ul class="nav nav-tabs mb-3" role="tablist">
+                    <li class="nav-item">
+                        <button class="nav-link active" data-bs-toggle="tab" data-bs-target="#asignaciones-tab">
+                            <i class="bi bi-people"></i> Asignaciones a Promotores
+                        </button>
+                    </li>
+                    <li class="nav-item">
+                        <button class="nav-link" data-bs-toggle="tab" data-bs-target="#movimientos-tab">
+                            <i class="bi bi-arrow-left-right"></i> Movimientos de Stock
+                        </button>
+                    </li>
+                </ul>
+
+                <div class="tab-content">
+                    <div class="tab-pane fade show active" id="asignaciones-tab">
+                        <div id="historialAsignaciones">
+                            <div class="text-center py-4">
+                                <div class="spinner-border text-primary" role="status">
+                                    <span class="visually-hidden">Cargando...</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="tab-pane fade" id="movimientos-tab">
+                        <div id="historialMovimientos">
+                            <div class="text-center py-4">
+                                <div class="spinner-border text-primary" role="status">
+                                    <span class="visually-hidden">Cargando...</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
 <script>
     function resetForm() {
         document.getElementById('productoForm').reset();
@@ -307,6 +361,83 @@ $clientes = $clienteModel->getAll();
         document.getElementById('deleteProductoName').textContent = nombre;
 
         const modal = new bootstrap.Modal(document.getElementById('deleteModal'));
+        modal.show();
+    }
+
+    function verHistorial(productoId, productoNombre) {
+        document.getElementById('historialProductoNombre').textContent = productoNombre;
+
+        // Load assignment history
+        fetch(`/promotores-campo-system/api/producto_historial.php?producto_id=${productoId}&tipo=asignaciones`)
+            .then(response => response.json())
+            .then(data => {
+                const container = document.getElementById('historialAsignaciones');
+                if (data.success && data.data.length > 0) {
+                    let html = '<div class="table-responsive"><table class="table table-sm table-hover">';
+                    html += '<thead><tr><th>Fecha</th><th>Promotor</th><th>Supervisor</th><th>Tipo</th><th>Cantidad</th><th>Antes</th><th>Después</th><th>Observaciones</th></tr></thead><tbody>';
+
+                    data.data.forEach(item => {
+                        const badgeClass = item.tipo_movimiento === 'asignacion' ? 'bg-primary' :
+                            item.tipo_movimiento === 'ajuste_positivo' ? 'bg-success' : 'bg-warning';
+                        html += `
+                            <tr>
+                                <td>${new Date(item.fecha_movimiento).toLocaleString('es-ES')}</td>
+                                <td>${item.promotor_nombre}</td>
+                                <td>${item.supervisor_nombre}</td>
+                                <td><span class="badge ${badgeClass}">${item.tipo_movimiento}</span></td>
+                                <td><strong>${item.cantidad}</strong></td>
+                                <td>${item.cantidad_anterior}</td>
+                                <td>${item.cantidad_nueva}</td>
+                                <td><small>${item.observaciones || '-'}</small></td>
+                            </tr>
+                        `;
+                    });
+                    html += '</tbody></table></div>';
+                    container.innerHTML = html;
+                } else {
+                    container.innerHTML = '<div class="alert alert-info">No hay asignaciones registradas</div>';
+                }
+            })
+            .catch(error => {
+                document.getElementById('historialAsignaciones').innerHTML = '<div class="alert alert-danger">Error al cargar historial</div>';
+            });
+
+        // Load stock movements
+        fetch(`/promotores-campo-system/api/producto_historial.php?producto_id=${productoId}&tipo=movimientos`)
+            .then(response => response.json())
+            .then(data => {
+                const container = document.getElementById('historialMovimientos');
+                if (data.success && data.data.length > 0) {
+                    let html = '<div class="table-responsive"><table class="table table-sm table-hover">';
+                    html += '<thead><tr><th>Fecha</th><th>Usuario</th><th>Tipo</th><th>Cantidad</th><th>Stock Antes</th><th>Stock Después</th><th>Observaciones</th></tr></thead><tbody>';
+
+                    data.data.forEach(item => {
+                        const badgeClass = item.tipo_movimiento === 'entrada' ? 'bg-success' :
+                            item.tipo_movimiento === 'salida' ? 'bg-danger' :
+                            item.tipo_movimiento === 'ajuste' ? 'bg-warning' : 'bg-info';
+                        html += `
+                            <tr>
+                                <td>${new Date(item.fecha_movimiento).toLocaleString('es-ES')}</td>
+                                <td>${item.usuario_nombre}</td>
+                                <td><span class="badge ${badgeClass}">${item.tipo_movimiento}</span></td>
+                                <td><strong>${item.cantidad}</strong></td>
+                                <td>${item.stock_anterior}</td>
+                                <td>${item.stock_nuevo}</td>
+                                <td><small>${item.observaciones || '-'}</small></td>
+                            </tr>
+                        `;
+                    });
+                    html += '</tbody></table></div>';
+                    container.innerHTML = html;
+                } else {
+                    container.innerHTML = '<div class="alert alert-info">No hay movimientos registrados</div>';
+                }
+            })
+            .catch(error => {
+                document.getElementById('historialMovimientos').innerHTML = '<div class="alert alert-danger">Error al cargar movimientos</div>';
+            });
+
+        const modal = new bootstrap.Modal(document.getElementById('historialModal'));
         modal.show();
     }
 </script>

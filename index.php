@@ -7,16 +7,16 @@ if (isLoggedIn()) {
     
     switch($roleName) {
         case 'Administrador':
-            header('Location: /admin/dashboard.php');
+            header('Location: /promotores-campo-system/admin/dashboard.php');
             break;
         case 'Supervisor':
-            header('Location: /supervisor/dashboard.php');
+            header('Location: /promotores-campo-system/supervisor/dashboard.php');
             break;
         case 'Promotor':
-            header('Location: /promotor/dashboard.php');
+            header('Location: /promotores-campo-system/promotor/dashboard.php');
             break;
         case 'Cliente':
-            header('Location: /cliente/dashboard.php');
+            header('Location: /promotores-campo-system  /cliente/dashboard.php');
             break;
         default:
             header('Location: login.php');
