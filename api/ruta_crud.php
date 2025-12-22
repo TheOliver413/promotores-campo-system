@@ -10,11 +10,13 @@ require_once '../config/session.php';
 require_once '../config/database.php';
 require_once '../db/Auditoria.php';
 require_once '../lib/PHPMailer.php';
+require_once '../lib/EmailUtilidad.php';
 
 ob_end_clean();
 header('Content-Type: application/json; charset=utf-8');
 
-function sendJsonResponse($data) {
+function sendJsonResponse($data)
+{
     ob_clean();
     echo json_encode($data);
     exit;
@@ -185,7 +187,8 @@ try {
             $orsUrl = 'https://api.openrouteservice.org/v2/directions/driving-car/geojson';
             $orsData = [
                 'coordinates' => $coordenadas,
-                'instructions' => false
+                'instructions' => false,
+                'radiuses' => array_fill(0, count($coordenadas), 5000) // Increased to 5km radius
             ];
 
             $ch = curl_init();
@@ -204,13 +207,41 @@ try {
             curl_close($ch);
 
             if ($httpCode !== 200) {
-                error_log("Error OpenRouteService: HTTP $httpCode - $response");
+                error_log("[v0] OpenRouteService API failed: HTTP $httpCode - $response");
+
+                // Create a simple straight-line geometry as fallback
+                $fallbackGeometry = [
+                    'type' => 'LineString',
+                    'coordinates' => $coordenadas
+                ];
+
+                // Calculate approximate distance (Haversine formula)
+                $totalDistance = 0;
+                for ($i = 0; $i < count($coordenadas) - 1; $i++) {
+                    $lat1 = deg2rad($coordenadas[$i][1]);
+                    $lon1 = deg2rad($coordenadas[$i][0]);
+                    $lat2 = deg2rad($coordenadas[$i + 1][1]);
+                    $lon2 = deg2rad($coordenadas[$i + 1][0]);
+
+                    $dLat = $lat2 - $lat1;
+                    $dLon = $lon2 - $lon1;
+
+                    $a = sin($dLat / 2) * sin($dLat / 2) + cos($lat1) * cos($lat2) * sin($dLon / 2) * sin($dLon / 2);
+                    $c = 2 * atan2(sqrt($a), sqrt(1 - $a));
+                    $distance = 6371 * $c; // Earth radius in km
+
+                    $totalDistance += $distance;
+                }
+
                 echo json_encode([
-                    'success' => false,
-                    'message' => 'Error al calcular ruta con OpenRouteService',
-                    'http_code' => $httpCode,
-                    'error' => $curlError,
-                    'response' => $response
+                    'success' => true,
+                    'data' => [
+                        'geometry' => $fallbackGeometry,
+                        'distancia_km' => round($totalDistance, 2),
+                        'tiempo_minutos' => round($totalDistance * 2), // Estimate 2 min per km
+                        'fallback' => true,
+                        'message' => 'Ruta calculada con línea directa (servicio no disponible)'
+                    ]
                 ]);
                 exit;
             }
@@ -273,7 +304,7 @@ try {
         case 'create':
         case 'update':
             error_log("[v0] Create/Update ruta - POST data: " . print_r($_POST, true));
-            
+
             $rutaId = $_POST['ruta_id'] ?? null;
             $promotorId = $_POST['promotor_id'] ?? 0;
             $proyectoId = $_POST['proyecto_id'] ?? 0;
@@ -284,19 +315,19 @@ try {
             if (empty($nombreRuta)) {
                 sendJsonResponse(['success' => false, 'message' => 'El nombre de la ruta es requerido']);
             }
-            
+
             if (empty($fechaPlanificada)) {
                 sendJsonResponse(['success' => false, 'message' => 'La fecha planificada es requerida']);
             }
-            
+
             if (!$promotorId || $promotorId == 0) {
                 sendJsonResponse(['success' => false, 'message' => 'Debe seleccionar un promotor']);
             }
-            
+
             if (!$proyectoId || $proyectoId == 0) {
                 sendJsonResponse(['success' => false, 'message' => 'Debe seleccionar un proyecto']);
             }
-            
+
             if (empty($puntos) || !is_array($puntos)) {
                 sendJsonResponse(['success' => false, 'message' => 'Debe agregar al menos un punto a la ruta']);
             }
@@ -311,10 +342,10 @@ try {
                 sendJsonResponse(['success' => false, 'message' => 'No tiene permisos para asignar rutas a este promotor']);
             }
 
-            $stmt = $db->prepare("SELECT id, nombre_proyecto FROM proyectos WHERE id = ?");
+            $stmt = $db->prepare("SELECT id, nombre_proyecto FROM proyectos WHERE id = ? AND activo = 1");
             $stmt->execute([$proyectoId]);
             $proyecto = $stmt->fetch(PDO::FETCH_ASSOC);
-            
+
             if (!$proyecto) {
                 error_log("[v0] Proyecto no encontrado o inactivo - ID: {$proyectoId}");
                 sendJsonResponse(['success' => false, 'message' => 'El proyecto seleccionado no existe o está inactivo. Por favor seleccione otro proyecto.']);
@@ -331,7 +362,7 @@ try {
 
                 if (count($puntos) > 1) {
                     error_log("[v0] Calculando ruta optimizada para " . count($puntos) . " puntos");
-                    
+
                     $coordenadas = array_map(function ($p) {
                         return [floatval($p['longitud']), floatval($p['latitud'])];
                     }, $puntos);
@@ -382,7 +413,7 @@ try {
 
                 if ($rutaId) {
                     error_log("[v0] Actualizando ruta ID: {$rutaId}");
-                    
+
                     $stmt = $db->prepare("UPDATE rutas_promotores SET promotor_user_id = ?, proyecto_id = ?, nombre_ruta = ?, fecha_planificada = ?, puntos_ruta = ?, ruta_optimizada = ?, distancia_total_km = ?, tiempo_total_minutos = ? WHERE id = ?");
                     $stmt->execute([
                         $promotorId,
@@ -404,7 +435,7 @@ try {
                     $tipoNotificacion = 'ruta_actualizada';
                 } else {
                     error_log("[v0] Creando nueva ruta");
-                    
+
                     $stmt = $db->prepare("INSERT INTO rutas_promotores (promotor_user_id, proyecto_id, nombre_ruta, fecha_planificada, puntos_ruta, estado, ruta_optimizada, distancia_total_km, tiempo_total_minutos) VALUES (?, ?, ?, ?, ?, 'pendiente', ?, ?, ?)");
                     $stmt->execute([
                         $promotorId,
@@ -417,7 +448,7 @@ try {
                         $tiempoTotal
                     ]);
                     $rutaId = $db->lastInsertId();
-                    
+
                     error_log("[v0] Ruta creada con ID: {$rutaId}");
 
                     $message = 'Ruta creada exitosamente';
@@ -439,7 +470,7 @@ try {
                         $punto['tiempo_estimado_minutos'] ?? 30
                     ]);
                 }
-                
+
                 error_log("[v0] Insertados " . count($puntos) . " puntos de ruta");
 
                 $stmt = $db->prepare("SELECT nombre_completo, email FROM usuarios WHERE id = ?");
@@ -450,25 +481,32 @@ try {
                     $rutaData = [
                         'nombre_ruta' => $nombreRuta,
                         'fecha_planificada' => $fechaPlanificada,
-                        'puntos' => $puntos,
+                        'puntos' => array_map(function ($p) {
+                            return [
+                                'nombre' => $p['nombre'] ?? 'Punto sin nombre',
+                                'direccion' => $p['direccion'] ?? 'Sin dirección'
+                            ];
+                        }, $puntos),
                         'nombre_proyecto' => $proyecto['nombre_proyecto']
                     ];
 
                     if ($tipoNotificacion === 'ruta_asignada') {
-                        // Placeholder for email sending logic
+                        error_log("[v0] Enviando notificación de ruta asignada a {$promotor['email']}");
+                        EmailUtilidad::enviarNotificacionRutaAsignada($promotor, $rutaData);
                     } else {
-                        // Placeholder for email sending logic
+                        error_log("[v0] Enviando notificación de ruta actualizada a {$promotor['email']}");
+                        EmailUtilidad::enviarNotificacionRutaActualizada($promotor, $rutaData);
                     }
-                    
-                    error_log("[v0] Email enviado a {$promotor['email']}");
+
+                    error_log("[v0] Email enviado exitosamente a {$promotor['email']}");
                 } catch (Exception $emailError) {
                     error_log("[v0] Error al enviar email: " . $emailError->getMessage());
                     // No fallar la transacción si el email falla
                 }
 
                 $stmt = $db->prepare("INSERT INTO notificaciones (usuario_id, mensaje, tipo_notificacion, referencia_id) VALUES (?, ?, ?, ?)");
-                $mensajeNotif = $tipoNotificacion === 'ruta_asignada' 
-                    ? "Se te ha asignado una nueva ruta: {$nombreRuta} para el {$fechaPlanificada}" 
+                $mensajeNotif = $tipoNotificacion === 'ruta_asignada'
+                    ? "Se te ha asignado una nueva ruta: {$nombreRuta} para el {$fechaPlanificada}"
                     : "La ruta {$nombreRuta} ha sido actualizada";
 
                 $stmt->execute([$promotorId, $mensajeNotif, $tipoNotificacion, $rutaId]);
@@ -483,7 +521,7 @@ try {
                 );
 
                 $db->commit();
-                
+
                 error_log("[v0] Ruta guardada exitosamente - ID: {$rutaId}");
 
                 sendJsonResponse([
@@ -671,7 +709,7 @@ try {
 
             if ($ruta['estado'] !== 'pausada') {
                 echo json_encode([
-                    'success' => false, 
+                    'success' => false,
                     'message' => "La ruta no está pausada. Estado actual: {$ruta['estado']}"
                 ]);
                 exit;
@@ -750,7 +788,7 @@ try {
 } catch (Exception $e) {
     error_log("[v0] Error en ruta_crud.php: " . $e->getMessage());
     error_log("[v0] Stack trace: " . $e->getTraceAsString());
-    
+
     sendJsonResponse([
         'success' => false,
         'message' => 'Error del servidor: ' . $e->getMessage(),

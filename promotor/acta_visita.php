@@ -81,7 +81,6 @@ include '../includes/header.php';
 
     <form id="actaForm" enctype="multipart/form-data">
         <input type="hidden" name="ruta_promotor_id" value="<?php echo htmlspecialchars($rutaId ?? ''); ?>">
-        <input type="hidden" name="promotor_user_id" value="<?php echo $user_id; ?>">
         <input type="hidden" id="firma_digital" name="firma_digital">
         <input type="hidden" id="latitud" name="latitud">
         <input type="hidden" id="longitud" name="longitud">
@@ -179,7 +178,6 @@ include '../includes/header.php';
                     </div>
                     <div class="card-body">
                         <canvas id="signature-pad" class="signature-pad" width="500" height="200"></canvas>
-                        <small class="text-muted">Dibuja la firma del receptor arriba</small>
                     </div>
                 </div>
 
