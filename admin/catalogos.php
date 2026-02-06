@@ -1,15 +1,16 @@
 <?php
-$pageTitle = 'Catálogos del Sistema';
-require_once __DIR__ . '/../includes/header.php';
+// 1. PRIMERO: Procesamiento de lógica y sesión (SIN SALIDA DE TEXTO)
 require_once __DIR__ . '/../config/session.php';
 require_once __DIR__ . '/../db/Auditoria.php';
 
+// Verificar permisos antes de cualquier cosa
 requireRole(['Administrador']);
 
 $db = Database::getInstance()->getConnection();
 $auditoriaModel = new Auditoria();
 
-// Handle CRUD for tipos_actividad
+// 2. PROCESAR FORMULARIOS (POST) 
+// Esto debe ir aquí para que el redireccionamiento funcione
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['tipo_form'])) {
     $action = $_POST['action'] ?? '';
 
@@ -30,14 +31,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['tipo_form'])) {
         $_SESSION['success'] = 'Tipo de actividad eliminado';
     }
 
-    header('Location: /admin/catalogos.php');
+    // REDIRECCIÓN: Ahora sí funcionará porque no hay HTML previo
+    header('Location: /promotores-campo-system/admin/catalogos.php');
     exit();
 }
 
-// Handle CRUD for configuraciones_globales
+// Lógica para configuraciones_globales
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['config_form'])) {
     $action = $_POST['action'] ?? '';
-
     if ($action === 'create_config') {
         $stmt = $db->prepare("INSERT INTO configuraciones_globales (clave, valor, descripcion) VALUES (?, ?, ?)");
         $stmt->execute([$_POST['clave'], $_POST['valor'], $_POST['descripcion']]);
@@ -55,16 +56,20 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['config_form'])) {
         $_SESSION['success'] = 'Configuración eliminada';
     }
 
-    header('Location: /admin/catalogos.php');
+    header('Location: /promotores-campo-system/admin/catalogos.php');
     exit();
 }
 
-// Get data
+// 3. OBTENER DATOS PARA LA VISTA
 $tiposStmt = $db->query("SELECT * FROM tipos_actividad ORDER BY nombre");
 $tipos = $tiposStmt->fetchAll();
 
 $configsStmt = $db->query("SELECT * FROM configuraciones_globales ORDER BY clave");
 $configs = $configsStmt->fetchAll();
+
+// 4. INICIAR SALIDA HTML (Cargar el header después de la lógica)
+$pageTitle = 'Catálogos del Sistema';
+require_once __DIR__ . '/../includes/header.php';
 ?>
 
 <div class="container-fluid">
