@@ -164,7 +164,7 @@ CREATE TABLE notificaciones (
     usuario_id INT NOT NULL,
     mensaje VARCHAR(500) NOT NULL,
     leido BOOLEAN DEFAULT false,
-    tipo_notificacion ENUM('aprobacion', 'rechazo', 'recordatorio', 'mensaje') NOT NULL,
+    tipo_notificacion ENUM('aprobacion', 'rechazo', 'recordatorio', 'mensaje', 'ruta_asignada', 'ruta_actualizada') NOT NULL,
     referencia_id INT,
     fecha_creacion TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (usuario_id) REFERENCES usuarios(id) ON DELETE CASCADE

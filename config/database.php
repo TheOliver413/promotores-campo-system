@@ -12,7 +12,7 @@ class Database
 
     // Database credentials
     private $host = 'localhost';
-    private $db_name = 'promotores_campo';
+    private $db_name = 'u126046987_promotores_cam';
     private $username = 'root';
     private $password = '';
     private $charset = 'utf8mb4';
@@ -47,7 +47,9 @@ class Database
     }
 
     // Prevent cloning
-    private function __clone() {}
+    private function __clone()
+    {
+    }
 
     // Prevent unserialization
     public function __wakeup()

@@ -252,9 +252,12 @@ include '../includes/header.php';
                             <small class="text-muted">Ej: Calle 123 #45-67, Bogotá</small>
                         </div>
                         <div class="mb-3">
-                            <button type="button" class="btn btn-sm btn-info" onclick="geocodificarDireccion()">
-                                <i class="bi bi-search"></i> Buscar Coordenadas
+                            <button type="button" class="btn btn-sm btn-info" id="btnGeocodificar" onclick="geocodificarDireccion()">
+                                <i class="bi bi-search"></i> <span id="textGeocodificar">Buscar Coordenadas</span>
                             </button>
+                            <small class="text-muted d-block mt-1">
+                                <i class="bi bi-info-circle"></i> Para mejores resultados, ingrese la dirección lo más precisa posible (Ej: Calle 100 #15-30, Bogotá).
+                            </small>
                             <small class="text-muted d-block mt-1">O haga clic en el mapa para seleccionar la ubicación</small>
                         </div>
                         <!-- Hacer editables los campos de latitud y longitud -->
@@ -547,7 +550,7 @@ include '../includes/header.php';
 
             if (ruta.puntos.length > 1) {
                 try {
-                    const routeResponse = await fetch('/promotores-campo-system/api/ruta_crud.php?action=calcular_ruta', {
+                    const routeResponse = await fetch('../api/ruta_crud.php?action=calcular_ruta', {
                         method: 'POST',
                         headers: {
                             'Content-Type': 'application/json',
@@ -674,7 +677,7 @@ include '../includes/header.php';
         if (!proyectoId) return;
 
         try {
-            const configResponse = await fetch(`/promotores-campo-system/api/ruta_crud.php?action=config_mapa&proyecto_id=${proyectoId}`);
+            const configResponse = await fetch(`../api/ruta_crud.php?action=config_mapa&proyecto_id=${proyectoId}`);
             const configResult = await configResponse.json();
 
             if (configResult.success && configResult.data) {
@@ -692,7 +695,7 @@ include '../includes/header.php';
                 }
             }
 
-            const ubicResponse = await fetch(`/promotores-campo-system/api/ruta_crud.php?action=ubicaciones_disponibles&proyecto_id=${proyectoId}`);
+            const ubicResponse = await fetch(`../api/ruta_crud.php?action=ubicaciones_disponibles&proyecto_id=${proyectoId}`);
             const ubicResult = await ubicResponse.json();
 
             if (ubicResult.success && Array.isArray(ubicResult.data)) {
@@ -772,7 +775,7 @@ include '../includes/header.php';
 
         if (puntosRuta.length > 1) {
             try {
-                const routeResponse = await fetch('/promotores-campo-system/api/ruta_crud.php?action=calcular_ruta', {
+                const routeResponse = await fetch('../api/ruta_crud.php?action=calcular_ruta', {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',
@@ -1076,6 +1079,8 @@ include '../includes/header.php';
     }
 
     function agregarPuntoManual() {
+        if (!validarCabeceraRuta()) return;
+
         editingPointIndex = null;
 
         document.getElementById('punto_nombre').value = '';
@@ -1279,8 +1284,33 @@ include '../includes/header.php';
         modal.show();
     }
 
+    function validarCabeceraRuta() {
+        const campos = [
+            { id: 'nombre_ruta', nombre: 'Nombre de la Ruta' },
+            { id: 'proyecto_id', nombre: 'Proyecto' },
+            { id: 'promotor_id', nombre: 'Promotor' },
+            { id: 'fecha_planificada', nombre: 'Fecha Planificada' }
+        ];
+
+        for (const campo of campos) {
+            const el = document.getElementById(campo.id);
+            if (!el || !el.value) {
+                alert(`Por favor, complete el campo "${campo.nombre}" antes de agregar puntos a la ruta.`);
+                if (el) {
+                    el.focus();
+                    el.classList.add('is-invalid');
+                    setTimeout(() => el.classList.remove('is-invalid'), 3000);
+                }
+                return false;
+            }
+        }
+        return true;
+    }
+
     async function geocodificarDireccion() {
         const direccion = document.getElementById('punto_direccion').value;
+        const btn = document.getElementById('btnGeocodificar');
+        
         if (!direccion) {
             alert('Por favor ingrese una dirección');
             return;
@@ -1291,19 +1321,29 @@ include '../includes/header.php';
             return;
         }
 
+        // Bloquear botón y mostrar loader
+        const originalHtml = btn.innerHTML;
+        btn.disabled = true;
+        btn.innerHTML = '<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> Buscando...';
+
         try {
             const proyectoId = document.getElementById('proyecto_id').value;
             let pais = 'Colombia';
 
             if (proyectoId) {
-                const configResponse = await fetch(`/promotores-campo-system/api/ruta_crud.php?action=config_mapa&proyecto_id=${proyectoId}`);
+                const configResponse = await fetch(`../api/ruta_crud.php?action=config_mapa&proyecto_id=${proyectoId}`);
                 const configResult = await configResponse.json();
                 if (configResult.success && configResult.data) {
                     pais = configResult.data.pais || 'Colombia';
                 }
             }
 
-            const response = await fetch(`/promotores-campo-system/api/ruta_crud.php?action=geocode&direccion=${encodeURIComponent(direccion)}&pais=${pais}`);
+            const response = await fetch(`../api/ruta_crud.php?action=geocode&direccion=${encodeURIComponent(direccion)}&pais=${pais}`);
+            
+            if (!response.ok) {
+                throw new Error('Servicio de mapas no disponible temporalmente');
+            }
+
             const result = await response.json();
 
             console.log('[v0] Resultado de geocodificación:', result);
@@ -1333,17 +1373,34 @@ include '../includes/header.php';
 
                 alert('Coordenadas encontradas correctamente');
             } else {
-                alert('No se pudo geocodificar la dirección: ' + (result.message || 'Error desconocido'));
+                let msg = result.message || 'No se pudo encontrar la ubicación.';
+                if (msg.toLowerCase().includes('timeout') || msg.toLowerCase().includes('timed out') || msg.toLowerCase().includes('connection')) {
+                    msg = 'El servicio de mapas está tardando demasiado o hay un problema de conexión. Intente de nuevo o busque por una dirección más conocida cercana.';
+                }
+                alert(msg);
             }
         } catch (error) {
             console.error('[v0] Error al geocodificar:', error);
-            alert('Error al buscar coordenadas');
+            alert('Hubo un problema al conectar con el servicio de geocodificación. Verifique su conexión o intente buscar la ubicación manualmente en el mapa.');
+        } finally {
+            btn.disabled = false;
+            btn.innerHTML = originalHtml;
         }
     }
 
     function agregarDesdeUbicacion() {
+        if (!validarCabeceraRuta()) return;
+
         if (ubicacionesDisponibles.length === 0) {
-            alert('No hay ubicaciones disponibles. Por favor seleccione un proyecto primero.');
+            const proyectoSelect = document.getElementById('proyecto_id');
+            proyectoSelect.classList.add('is-invalid', 'border-danger');
+            proyectoSelect.focus();
+            
+            alert('No hay ubicaciones disponibles para este proyecto o no ha seleccionado uno. Por favor seleccione un proyecto con ubicaciones configuradas.');
+            
+            setTimeout(() => {
+                proyectoSelect.classList.remove('is-invalid', 'border-danger');
+            }, 5000);
             return;
         }
 

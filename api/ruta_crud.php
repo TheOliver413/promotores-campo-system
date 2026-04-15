@@ -10,7 +10,6 @@ require_once '../config/session.php';
 require_once '../config/database.php';
 require_once '../db/Auditoria.php';
 require_once '../lib/PHPMailer.php';
-require_once '../lib/EmailUtilidad.php';
 
 ob_end_clean();
 header('Content-Type: application/json; charset=utf-8');
@@ -77,23 +76,40 @@ try {
 
             $whereClause = implode(' AND ', $whereConditions);
 
-            // Get total count
             $stmtCount = $db->prepare("SELECT COUNT(*) as total FROM rutas_promotores rp INNER JOIN supervisor_promotores sp ON rp.promotor_user_id = sp.promotor_id WHERE {$whereClause}");
             $stmtCount->execute($params);
-            $total = $stmtCount->fetch(PDO::FETCH_ASSOC)['total'];
+            $total = (int)$stmtCount->fetch(PDO::FETCH_ASSOC)['total'];
 
             // Get paginated results
-            $stmt = $db->prepare("SELECT rp.id as ruta_id, rp.promotor_user_id, rp.proyecto_id, rp.nombre_ruta, rp.fecha_planificada, rp.estado, rp.distancia_total_km, rp.tiempo_total_minutos, u.nombre_completo as nombre_promotor, p.nombre_proyecto, (SELECT COUNT(*) FROM puntos_ruta WHERE ruta_id = rp.id) as num_puntos FROM rutas_promotores rp INNER JOIN usuarios u ON rp.promotor_user_id = u.id INNER JOIN proyectos p ON rp.proyecto_id = p.id INNER JOIN supervisor_promotores sp ON rp.promotor_user_id = sp.promotor_id WHERE {$whereClause} ORDER BY rp.fecha_planificada DESC LIMIT ? OFFSET ?");
-            $params[] = $perPage;
-            $params[] = $offset;
-            $stmt->execute($params);
+            $sql = "SELECT rp.id as ruta_id, rp.promotor_user_id, rp.proyecto_id, rp.nombre_ruta, rp.fecha_planificada, rp.estado, rp.distancia_total_km, rp.tiempo_total_minutos, u.nombre_completo as nombre_promotor, p.nombre_proyecto, (SELECT COUNT(*) FROM puntos_ruta WHERE ruta_id = rp.id) as num_puntos 
+                    FROM rutas_promotores rp 
+                    INNER JOIN usuarios u ON rp.promotor_user_id = u.id 
+                    INNER JOIN proyectos p ON rp.proyecto_id = p.id 
+                    INNER JOIN supervisor_promotores sp ON rp.promotor_user_id = sp.promotor_id 
+                    WHERE {$whereClause} 
+                    ORDER BY rp.fecha_planificada DESC 
+                    LIMIT ? OFFSET ?";
+            
+            $stmt = $db->prepare($sql);
+            
+            $paramIndex = 1;
+            // Bind where clause parameters
+            foreach ($params as $value) {
+                $stmt->bindValue($paramIndex++, $value);
+            }
+            
+            // Bind pagination as integers using positions
+            $stmt->bindValue($paramIndex++, (int)$perPage, PDO::PARAM_INT);
+            $stmt->bindValue($paramIndex++, (int)$offset, PDO::PARAM_INT);
+            
+            $stmt->execute();
             $rutas = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
             echo json_encode([
                 'success' => true,
                 'data' => $rutas,
                 'pagination' => [
-                    'total' => (int)$total,
+                    'total' => $total,
                     'page' => $page,
                     'per_page' => $perPage,
                     'total_pages' => ceil($total / $perPage)
@@ -280,14 +296,30 @@ try {
             $ch = curl_init();
             curl_setopt($ch, CURLOPT_URL, $url);
             curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-            curl_setopt($ch, CURLOPT_USERAGENT, 'PromotoresCampoSystem/1.0');
+            curl_setopt($ch, CURLOPT_USERAGENT, 'PromotoresCampoSystem/1.0 (contact: admin@promotores-campo.local)');
+            curl_setopt($ch, CURLOPT_TIMEOUT, 10);
+            curl_setopt($ch, CURLOPT_CONNECTTIMEOUT, 5);
             $response = curl_exec($ch);
+            $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+            $curlError = curl_error($ch);
             curl_close($ch);
+
+            if ($curlError) {
+                error_log("[v0] Geocode cURL Error: " . $curlError);
+                echo json_encode(['success' => false, 'message' => 'Error de conexión con el servicio de mapas: ' . $curlError]);
+                exit;
+            }
+
+            if ($httpCode !== 200) {
+                error_log("[v0] Geocode HTTP Error: " . $httpCode . " Response: " . $response);
+                echo json_encode(['success' => false, 'message' => 'El servicio de mapas no respondió correctamente (HTTP ' . $httpCode . ')']);
+                exit;
+            }
 
             $data = json_decode($response, true);
 
-            if (empty($data)) {
-                echo json_encode(['success' => false, 'message' => 'No se pudo geocodificar la dirección']);
+            if (empty($data) || !isset($data[0])) {
+                echo json_encode(['success' => false, 'message' => 'No se encontraron coordenadas para la dirección proporcionada. Intente ser más específico (ej: incluya ciudad y departamento).']);
                 exit;
             }
 
@@ -342,7 +374,7 @@ try {
                 sendJsonResponse(['success' => false, 'message' => 'No tiene permisos para asignar rutas a este promotor']);
             }
 
-            $stmt = $db->prepare("SELECT id, nombre_proyecto FROM proyectos WHERE id = ? AND activo = 1");
+            $stmt = $db->prepare("SELECT id, nombre_proyecto FROM proyectos WHERE id = ? AND estado = 'activo'");
             $stmt->execute([$proyectoId]);
             $proyecto = $stmt->fetch(PDO::FETCH_ASSOC);
 
